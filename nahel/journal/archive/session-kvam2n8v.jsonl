@@ -1,0 +1,2 @@
+{"id":"jbd9dqqt","ts":"2026-08-22T23:03:07Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"item":"jpgyfzrz","payload":{"summary":"assumption: single-player against LLM-driven suspects, no human opponents, per the founding instruction's stated acceptable scope. The paragraph is silent on player count. Risk if wrong: hot-seat multiplayer is a CLI-layer change since the engine already models N players."}}
+{"id":"7sbk5z9k","ts":"2026-08-22T23:03:07Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

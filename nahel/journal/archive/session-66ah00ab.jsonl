@@ -1,0 +1,2 @@
+{"id":"29766g00","ts":"2026-08-22T23:02:20Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"opus-founder"},"item":"cycx4815","payload":{"target":"item","record":{"id":"cycx4815","name":"e2e","type":"chore","status":"backlog","lane":"full","parent":"hcsshz65","depends_on":["6yxb3z7p"],"external_refs":[],"created":"2026-08-22T23:02:20Z","updated":"2026-08-22T23:02:20Z"},"body":""}}
+{"id":"pvfskg0n","ts":"2026-08-22T23:02:20Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

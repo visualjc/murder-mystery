@@ -1,0 +1,2 @@
+{"id":"d35b86j0","ts":"2026-08-22T23:03:07Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"item":"jpgyfzrz","payload":{"summary":"assumption: persistence is a single JSON save file and nothing more — no database, no accounts. The paragraph is silent; the founding instruction records it as a non-goal boundary. Risk if wrong: low, save-file shape is internal."}}
+{"id":"mg9cc64y","ts":"2026-08-22T23:03:07Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

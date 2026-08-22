@@ -1,0 +1,2 @@
+{"id":"q8qjhge1","ts":"2026-08-22T23:01:51Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"payload":{"summary":"first-scaffold obligation: run contract unproven on an empty repo — nahel doctor must exit 0 before any verify-by-driving PR opens"}}
+{"id":"gktccpv3","ts":"2026-08-22T23:01:51Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

@@ -1,0 +1,2 @@
+{"id":"fja7wzbc","ts":"2026-08-22T23:02:20Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"opus-founder"},"item":"6yxb3z7p","payload":{"target":"item","record":{"id":"6yxb3z7p","name":"cli-ui","type":"feature","status":"backlog","lane":"full","parent":"hcsshz65","depends_on":["0jrmya9a","k0n64xb4"],"external_refs":[],"created":"2026-08-22T23:02:20Z","updated":"2026-08-22T23:02:20Z"},"body":""}}
+{"id":"f341pcbx","ts":"2026-08-22T23:02:20Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

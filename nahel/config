@@ -1,0 +1,52 @@
+knowledge:
+  product: PRODUCT.md
+  context: CONTEXT.md
+  adr: docs/adr
+actor:
+  kind: human
+  id: maintainer
+contract:
+  launch: bun run src/cli.ts
+  seed: "true"
+  test: bun test
+  healthcheck: bun run src/cli.ts --help
+  env:
+    - POE_API_KEY
+routing:
+  architecture:
+    agent: claude
+    model: opus
+  implementation:
+    agent: claude
+    model: opus
+  review:
+    agent: codex
+  review2:
+    agent: claude
+    model: opus
+  default:
+    agent: claude
+    model: opus
+dispatch:
+  codex:
+    binary: codex
+    args:
+      - exec
+      - --sandbox
+      - workspace-write
+    model_flag: --model
+founding:
+  mode: hands-off
+  paragraph: build a little murder trivia mystery game that follows the standard
+    Clue style rule set, but uses an LLM (api key and endpoint, or oauth token)
+    to answer questions and move the game forward (acts like a game master).
+    This mini-app also needs to be planning partner and nahel driven. use the
+    nahel features you are building to build a simple murder mystery clue like
+    game using an LLM as a scenrario builder and simple game master; this tests
+    that we are using different agents, llms, etc and that the token cost is
+    shared and such.
+governance:
+  product: delegated
+  architecture: human
+merge:
+  authority: human

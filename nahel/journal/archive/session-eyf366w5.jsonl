@@ -1,0 +1,2 @@
+{"id":"pry47sac","ts":"2026-08-22T23:03:07Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"item":"jpgyfzrz","payload":{"summary":"assumption: TypeScript on Bun, terminal CLI as the only v1 surface, per the founding instruction. The paragraph names no stack. Risk if wrong: a different runtime would invalidate the run contract but not the engine design."}}
+{"id":"pnqsx70a","ts":"2026-08-22T23:03:07Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

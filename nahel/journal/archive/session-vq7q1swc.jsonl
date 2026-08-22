@@ -1,0 +1,2 @@
+{"id":"1am208vk","ts":"2026-08-22T23:01:42Z","seq":0,"type":"config.updated","actor":{"kind":"agent","id":"opus-founder"},"payload":{"section":"routing","value":{"architecture":{"agent":"claude","model":"opus"},"implementation":{"agent":"claude","model":"opus"},"review":{"agent":"codex"},"review2":{"agent":"claude","model":"opus"},"default":{"agent":"claude","model":"opus"}}}}
+{"id":"ddanywqs","ts":"2026-08-22T23:01:42Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

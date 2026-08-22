@@ -1,0 +1,2 @@
+{"id":"hhdk6p5a","ts":"2026-08-22T23:01:42Z","seq":0,"type":"config.updated","actor":{"kind":"agent","id":"opus-founder"},"payload":{"section":"governance","value":{"product":"delegated","architecture":"human"}}}
+{"id":"qsffdckm","ts":"2026-08-22T23:01:42Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

@@ -1,0 +1,2 @@
+{"id":"aqax9nzd","ts":"2026-08-22T23:01:42Z","seq":0,"type":"config.updated","actor":{"kind":"agent","id":"opus-founder"},"payload":{"section":"contract","value":{"launch":"bun run src/cli.ts","seed":"true","test":"bun test","healthcheck":"bun run src/cli.ts --help","env":["POE_API_KEY"]}}}
+{"id":"44nqz9jc","ts":"2026-08-22T23:01:42Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}

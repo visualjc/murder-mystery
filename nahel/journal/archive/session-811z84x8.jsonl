@@ -1,0 +1,2 @@
+{"id":"bpbcmg5a","ts":"2026-08-22T23:01:57Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"opus-founder"},"item":"hcsshz65","payload":{"target":"item","record":{"id":"hcsshz65","name":"murder-mystery-game","type":"feature","status":"backlog","lane":"full","depends_on":[],"external_refs":[],"created":"2026-08-22T23:01:57Z","updated":"2026-08-22T23:01:57Z"},"body":""}}
+{"id":"bzvy4m61","ts":"2026-08-22T23:01:57Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}
