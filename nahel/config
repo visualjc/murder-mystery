@@ -35,6 +35,10 @@ dispatch:
       - --sandbox
       - workspace-write
     model_flag: --model
+inception:
+  tier: seed
+  constitution_signed_by: pending — hands-off founding transcribed by agent from
+    Jim Carter's chat kickoff 2026-08-22; awaiting human ratification
 founding:
   mode: hands-off
   paragraph: build a little murder trivia mystery game that follows the standard

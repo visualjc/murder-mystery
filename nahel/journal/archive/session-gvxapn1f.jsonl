@@ -1,0 +1,2 @@
+{"id":"8y0ca1kx","ts":"2026-08-22T23:09:56Z","seq":0,"type":"item.updated","actor":{"kind":"agent","id":"opus-founder"},"item":"jpgyfzrz","payload":{"target":"item","record":{"id":"jpgyfzrz","name":"found-murder-mystery-test","type":"plan","status":"blocked","lane":"direct","depends_on":[],"external_refs":[],"created":"2026-08-22T23:01:57Z","updated":"2026-08-22T23:09:56Z"},"body":""}}
+{"id":"nkkrv05c","ts":"2026-08-22T23:09:56Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"opus-founder"},"payload":{}}
