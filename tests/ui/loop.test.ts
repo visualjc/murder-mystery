@@ -294,6 +294,100 @@ describe('with a game master', () => {
     }
   }, 30_000);
 
+  /**
+   * Panel finding (codex): everything the model says was written to stdout
+   * untouched, so a vendor could hand the player's terminal escape sequences to
+   * execute — colour, cursor moves back over lines already read, a rewritten
+   * window title, an OSC 52 clipboard write.
+   *
+   * The vendor here is hostile on every channel the game reads: the scenario,
+   * the narration and a suspect's answer. Note that the scenario and narration
+   * payloads are JSON, so `JSON.stringify` sends each escape as its six-character JSON escape on the
+   * wire and they become real control characters only when the game master
+   * decodes them — which is why the sanitizing boundary has to sit after that
+   * decode, not at the HTTP layer.
+   */
+  test('a hostile vendor cannot put a terminal escape on the screen', async () => {
+    const ESC = String.fromCharCode(0x1b);
+    const BEL = String.fromCharCode(0x07);
+    const CSI_C1 = String.fromCharCode(0x9b);
+
+    const vendor = startFakeVendor((request) => {
+      const body = request.body as { messages: { content: string }[] };
+      const prompt = body.messages.map((message) => message.content).join('\n');
+
+      if (prompt.includes('Return exactly this JSON shape')) {
+        return completionResponse({
+          content: JSON.stringify({
+            victim: `Lord ${ESC}[31mEdgemere${ESC}[0m`,
+            setting: `A rain-locked manor${ESC}]0;pwned${BEL}`,
+            intro: `${CSI_C1}2JThe clock stopped at nine.${ESC}[1;1H`,
+            suspects: SUSPECTS.map((suspect) => ({
+              name: suspect,
+              persona: `${suspect}, sharply drawn.`,
+            })),
+          }),
+          // Even the model id the vendor answers with lands on the screen, in
+          // the ledger's per-model row.
+          model: `Test-Model${ESC}]0;pwned${BEL}`,
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        });
+      }
+
+      if (prompt.includes('a guest questioned about a death in the house')) {
+        return completionResponse({
+          content: `${ESC}]0;pwned${BEL}I was on the stairs${ESC}[2J.`,
+          model: 'Test-Model',
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        });
+      }
+
+      const count = (prompt.match(/^\d+\. /gm) ?? []).length;
+      return completionResponse({
+        content: JSON.stringify(
+          Array.from({ length: count }, () => `${CSI_C1}2K${ESC}[31mA door closes upstairs.${ESC}[0m`),
+        ),
+        model: 'Test-Model',
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      });
+    });
+
+    try {
+      const session = drivenSession(
+        scriptedDriver(['ask', '1', 'Where were you when the lamps went out?', 'quit']),
+      );
+      const client = clientFor(vendor.baseUrl);
+      const code = await runGame(
+        { seed: 1, players: 3, useLlm: true },
+        { io: session.io, createClient: () => client },
+      );
+      const text = session.text();
+
+      const controls = [...text]
+        .filter((char) => {
+          const code = char.charCodeAt(0);
+          if (code === 0x09 || code === 0x0a) return false;
+          return code < 0x20 || (code >= 0x7f && code <= 0x9f);
+        })
+        .map((char) => `0x${char.charCodeAt(0).toString(16)}`);
+      console.log('[hostile vendor] control characters on screen ->', controls);
+
+      expect(code).toBe(0);
+      expect(controls).toEqual([]);
+      expect(text).not.toContain('pwned');
+      // Nothing was thrown away with the escapes: the words are all still there.
+      expect(text).toContain('The dead: Lord Edgemere');
+      expect(text).toContain('A rain-locked manor');
+      expect(text).toContain('The clock stopped at nine.');
+      expect(text).toContain('A door closes upstairs.');
+      expect(text).toContain('I was on the stairs.');
+      // Including the vendor-supplied model id in the ledger's own row.
+      expect(text).toContain('  test-model: ');
+    } finally {
+      await vendor.stop();
+    }
+  }, 30_000);
+
   test('a client that cannot even be built is a notice, not a crash', async () => {
     const session = drivenSession(scriptedDriver(['quit']));
     const code = await runGame(

@@ -20,6 +20,7 @@ import type { GameEvent, PlayerId } from '../engine/types.ts';
 import { describeEvent, isVisibleTo } from '../engine/view.ts';
 import type { ChatClient, ChatMessage } from '../llm/index.ts';
 import type { Scenario } from './scenario.ts';
+import { tidyText, unfence } from './text.ts';
 
 export type NarrationLine = {
   readonly event: GameEvent;
@@ -63,11 +64,6 @@ export function narrationMessages(
   ];
 }
 
-function unfence(text: string): string {
-  const fenced = /^\s*```(?:json)?\s*\n([\s\S]*?)\n?\s*```\s*$/.exec(text);
-  return fenced?.[1] ?? text;
-}
-
 /**
  * Read up to `count` narration strings from a model reply.
  *
@@ -86,11 +82,7 @@ export function parseNarration(text: string, count: number): (string | null)[] {
   if (!Array.isArray(payload)) return slots;
 
   for (let index = 0; index < count; index += 1) {
-    const entry = payload[index];
-    if (typeof entry !== 'string') continue;
-    const line = entry.replace(/\s+/g, ' ').trim();
-    if (line.length === 0) continue;
-    slots[index] = line.length > MAX_LINE_LENGTH ? `${line.slice(0, MAX_LINE_LENGTH)}…` : line;
+    slots[index] = tidyText(payload[index], MAX_LINE_LENGTH);
   }
   return slots;
 }

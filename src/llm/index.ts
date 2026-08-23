@@ -34,6 +34,8 @@ export {
   type LoadLlmConfigOptions,
 } from "./config.ts";
 
+export { sanitizeVendorText } from "./sanitize.ts";
+
 export {
   LlmConfigError,
   LlmError,

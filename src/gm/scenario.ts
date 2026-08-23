@@ -16,6 +16,7 @@
 import { ROOMS, SUSPECTS, WEAPONS, isSuspect, type Suspect } from '../engine/cards.ts';
 import type { ChatClient, ChatMessage } from '../llm/index.ts';
 import { LlmHttpError } from '../llm/index.ts';
+import { tidyText, unfence } from './text.ts';
 
 export type Scenario = {
   readonly victim: string;
@@ -87,18 +88,9 @@ export function scenarioMessages(): ChatMessage[] {
   ];
 }
 
-/** Collapse whitespace and clamp — a model that runs away must not bloat every later prompt. */
+/** One scenario field: sanitized, collapsed and clamped. Null when unusable. */
 function tidy(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const text = value.replace(/\s+/g, ' ').trim();
-  if (text.length === 0) return null;
-  return text.length > MAX_FIELD_LENGTH ? `${text.slice(0, MAX_FIELD_LENGTH)}…` : text;
-}
-
-/** Strip the code fence models wrap JSON in, if there is one. */
-function unfence(text: string): string {
-  const fenced = /^\s*```(?:json)?\s*\n([\s\S]*?)\n?\s*```\s*$/.exec(text);
-  return fenced?.[1] ?? text;
+  return tidyText(value, MAX_FIELD_LENGTH);
 }
 
 /**

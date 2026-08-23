@@ -35,6 +35,7 @@ import type { GameEvent } from '../engine/types.ts';
 import { describeEvent, describePosition, type PlayerView } from '../engine/view.ts';
 import type { ChatClient, ChatMessage } from '../llm/index.ts';
 import type { Scenario } from './scenario.ts';
+import { tidyText } from './text.ts';
 
 export type VisibleFacts = {
   readonly turnNumber: number;
@@ -124,9 +125,13 @@ export function visibleFactsFor(view: PlayerView, suspect: Suspect): VisibleFact
   };
 }
 
+/**
+ * One line of free text, clamped. The player's own question goes through the
+ * same boundary as the model's answer: a question is pasted into a prompt, and
+ * a pasted terminal escape has no business travelling either way.
+ */
 function clamp(text: string, limit: number): string {
-  const tidy = text.replace(/\s+/g, ' ').trim();
-  return tidy.length > limit ? `${tidy.slice(0, limit)}…` : tidy;
+  return tidyText(text, limit) ?? '';
 }
 
 export function questionMessages(

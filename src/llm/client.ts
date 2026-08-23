@@ -1,4 +1,5 @@
 import { loadLlmConfig, type LlmConfig, type LoadLlmConfigOptions } from "./config.ts";
+import { sanitizeVendorText } from "./sanitize.ts";
 import {
   LlmError,
   LlmHttpError,
@@ -308,7 +309,12 @@ export function parseCompletion(raw: string, url: string, requestedModel: string
     });
   }
 
-  const model = typeof record.model === "string" && record.model.length > 0 ? record.model : requestedModel;
+  // The model id is the one vendor-supplied string that is NOT prose: it becomes
+  // a ledger row printed at the end of the session, so it is stripped of
+  // terminal control sequences here, where it enters (panel finding, codex).
+  // The reply text is not sanitized here on purpose — see src/gm/text.ts.
+  const echoed = sanitizeVendorText(typeof record.model === "string" ? record.model : "");
+  const model = echoed.length > 0 ? echoed : requestedModel;
 
   return { text, usage: parseUsage(record.usage), model };
 }
