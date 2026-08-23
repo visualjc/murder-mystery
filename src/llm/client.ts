@@ -61,7 +61,19 @@ export interface ModelUsage {
  * buckets and understate its share.
  */
 export interface SessionUsage {
+  /** COMPLETED responses. A failed call is not one, and never has been. */
   calls: number;
+  /**
+   * HTTP exchanges the client entered, retries included and failures included.
+   *
+   * Counted because a failed call is not a free call: the request left the
+   * machine and the provider may well have spent tokens on it before answering
+   * an error. A ledger that reported only completions told a session where
+   * everything failed that nothing had happened (panel finding, agy).
+   */
+  attempts: number;
+  /** Calls that ended in an `LlmError` — one per failed `chat`, not per retry. */
+  failures: number;
   callsWithUsage: number;
   callsWithoutUsage: number;
   prompt_tokens: number;
@@ -88,6 +100,8 @@ export class ChatClient {
   readonly config: LlmConfig;
 
   #calls = 0;
+  #attempts = 0;
+  #failures = 0;
   #callsWithUsage = 0;
   #promptTokens = 0;
   #completionTokens = 0;
@@ -109,6 +123,8 @@ export class ChatClient {
     for (const [model, totals] of this.#byModel) byModel[model] = { ...totals };
     return {
       calls: this.#calls,
+      attempts: this.#attempts,
+      failures: this.#failures,
       callsWithUsage: this.#callsWithUsage,
       callsWithoutUsage: this.#calls - this.#callsWithUsage,
       prompt_tokens: this.#promptTokens,
@@ -127,10 +143,18 @@ export class ChatClient {
     const timeoutMs = options.timeoutMs ?? this.config.timeoutMs;
     const body = JSON.stringify({ ...(options.params ?? {}), model, messages });
 
-    const raw = await this.#send(body, timeoutMs, options.signal);
-    const result = parseCompletion(raw, this.endpoint, model);
-    this.#account(result);
-    return result;
+    try {
+      const raw = await this.#send(body, timeoutMs, options.signal);
+      const result = parseCompletion(raw, this.endpoint, model);
+      this.#account(result);
+      return result;
+    } catch (error) {
+      // One failure per failed CALL: the retries inside `#send` are already
+      // counted as attempts. A caller-driven abort is not a vendor failure and
+      // does not reach here as an `LlmError`.
+      if (error instanceof LlmError) this.#failures += 1;
+      throw error;
+    }
   }
 
   /**
@@ -182,6 +206,10 @@ export class ChatClient {
     timeoutMs: number,
     callerSignal?: AbortSignal,
   ): Promise<{ response: Response; raw: string }> {
+    // Counted before the request leaves: an exchange the vendor may have been
+    // paid for is an exchange, however it ends.
+    this.#attempts += 1;
+
     const controller = new AbortController();
     const onCallerAbort = () => controller.abort(callerSignal?.reason);
     callerSignal?.addEventListener("abort", onCallerAbort, { once: true });

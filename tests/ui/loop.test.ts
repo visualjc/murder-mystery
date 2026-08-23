@@ -254,6 +254,14 @@ describe('with a game master', () => {
     }
   });
 
+  /**
+   * This test used to pin `No LLM calls were made this session.` for an
+   * all-failure session. That line was pinned DELIBERATELY, to put the
+   * builder's own journaled doubt in front of the panel: the calls WERE made,
+   * and a ledger that reports silence hides tokens the vendor may already have
+   * charged for. The panel (agy) accepted the finding, so the pinned line is
+   * now the failed-attempt count.
+   */
   test('a vendor that fails is one line of notice, and the game plays on', async () => {
     const vendor = startFakeVendor(() => errorResponse(500, 'down'));
     try {
@@ -272,8 +280,9 @@ describe('with a game master', () => {
       // The canned scenario and the engine's own sentences carry the game.
       expect(text).toContain('The dead: Doctor Alastair Vane');
       expect(text).toContain('── Case closed ──');
-      // Every call failed, so there is nothing honest to report as usage.
-      expect(text).toContain('No LLM calls were made this session.');
+      // Every call failed: no tokens can be reported, but the attempts are.
+      expect(text).not.toContain('No LLM calls were made this session.');
+      expect(text).toMatch(/LLM usage: 0 completed calls, \d+ failed attempts?/);
     } finally {
       await vendor.stop();
     }

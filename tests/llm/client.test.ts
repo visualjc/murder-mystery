@@ -577,3 +577,115 @@ describe("ChatClient — panel-accepted fixes (drive kqrr2q4q)", () => {
     });
   });
 });
+
+/**
+ * ATTEMPT accounting (panel finding, agy — and the gap the builder journaled
+ * against itself): a ledger that counts only completed responses reports
+ * nothing at all for a session that spent tokens server-side and then failed.
+ * `calls` keeps its meaning — completed responses — and `attempts`/`failures`
+ * say what was tried and what came back an error.
+ */
+describe("ChatClient — attempt and failure accounting", () => {
+  test("a session where every call fails reports zero calls, but the attempts and the failure", async () => {
+    const vendor = startFakeVendor(() => errorResponse(500, "down"));
+    try {
+      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 5 });
+      let thrown: unknown;
+      try {
+        await client.chat([{ role: "user", content: "hi" }]);
+      } catch (error) {
+        thrown = error;
+      }
+      const session = client.usage;
+      console.log("[all-failure ledger] ->", JSON.stringify(session));
+
+      expect(thrown).toBeInstanceOf(LlmHttpError);
+      expect(session.calls).toBe(0);
+      // One chat call, one transport retry: two HTTP exchanges, one failure.
+      expect(vendor.requests).toHaveLength(2);
+      expect(session.attempts).toBe(2);
+      expect(session.failures).toBe(1);
+      expect(session.total_tokens).toBe(0);
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test("a retried call that succeeds counts two attempts, one call and no failure", async () => {
+    const vendor = startFakeVendor((_request, index) =>
+      index === 0
+        ? errorResponse(429, "slow down")
+        : completionResponse({
+            content: "recovered",
+            usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+          }),
+    );
+    try {
+      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 5 });
+      await client.chat([{ role: "user", content: "hi" }]);
+      const session = client.usage;
+      console.log("[retried-then-ok ledger] ->", JSON.stringify(session));
+
+      expect(session.calls).toBe(1);
+      expect(session.attempts).toBe(2);
+      expect(session.failures).toBe(0);
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test("a failure after a completed call leaves the completed call standing", async () => {
+    const vendor = startFakeVendor((_request, index) =>
+      index === 0
+        ? completionResponse({
+            content: "first",
+            usage: { prompt_tokens: 4, completion_tokens: 6, total_tokens: 10 },
+          })
+        : errorResponse(503, "gone"),
+    );
+    try {
+      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 5 });
+      await client.chat([{ role: "user", content: "one" }]);
+      const outcome = await client.tryChat([{ role: "user", content: "two" }]);
+      const session = client.usage;
+      console.log("[mixed ledger] ->", JSON.stringify(session));
+
+      expect(outcome.ok).toBe(false);
+      expect(session.calls).toBe(1);
+      expect(session.callsWithUsage).toBe(1);
+      // 1 success + (1 failed exchange + its retry) = 3 exchanges, 1 failure.
+      expect(session.attempts).toBe(3);
+      expect(session.failures).toBe(1);
+      expect(session.total_tokens).toBe(10);
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test("a transport failure with no HTTP reply is still one attempt and one failure", async () => {
+    const client = clientFor(await deadBaseUrl(), { retryBackoffMs: 5 });
+    const outcome = await client.tryChat([{ role: "user", content: "hi" }]);
+    console.log("[dead endpoint ledger] ->", JSON.stringify(client.usage));
+
+    expect(outcome.ok).toBe(false);
+    expect(client.usage.attempts).toBe(1);
+    expect(client.usage.failures).toBe(1);
+    expect(client.usage.calls).toBe(0);
+  });
+
+  test("failures counted through tryChat match those counted through chat", async () => {
+    const vendor = startFakeVendor(() => errorResponse(400, "bad request"));
+    try {
+      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 5 });
+      await client.tryChat([{ role: "user", content: "one" }]);
+      await client.tryChat([{ role: "user", content: "two" }]);
+      console.log("[tryChat failures] ->", JSON.stringify(client.usage));
+
+      // 400 is never retried: one exchange each.
+      expect(client.usage.attempts).toBe(2);
+      expect(client.usage.failures).toBe(2);
+    } finally {
+      await vendor.stop();
+    }
+  });
+});

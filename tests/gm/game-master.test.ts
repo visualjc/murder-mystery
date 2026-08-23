@@ -173,9 +173,11 @@ describe('formatUsageLedger', () => {
     }
   });
 
-  test('an unused session says so rather than printing an empty table', () => {
+  test('a session that never attempted a call says so rather than printing an empty table', () => {
     const lines = formatUsageLedger({
       calls: 0,
+      attempts: 0,
+      failures: 0,
       callsWithUsage: 0,
       callsWithoutUsage: 0,
       prompt_tokens: 0,
@@ -186,9 +188,50 @@ describe('formatUsageLedger', () => {
     expect(lines).toEqual(['No LLM calls were made this session.']);
   });
 
+  /**
+   * Panel finding (agy), and the gap the builder journaled against itself: a
+   * session where every call failed used to print "No LLM calls were made",
+   * which is false — the requests were made, and the vendor may well have
+   * charged for them. Silence about a failed attempt is not honesty.
+   */
+  test('a session where every call failed reports the failed attempts, not silence', () => {
+    const lines = formatUsageLedger({
+      calls: 0,
+      attempts: 4,
+      failures: 3,
+      callsWithUsage: 0,
+      callsWithoutUsage: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      byModel: {},
+    });
+    console.log('[ledger all-failure]\n' + lines.join('\n'));
+    expect(lines.join('\n')).toContain('0 completed calls, 3 failed attempts');
+    expect(lines.join('\n')).not.toContain('No LLM calls were made');
+  });
+
+  test('failed attempts alongside completed calls are named on the total line', () => {
+    const lines = formatUsageLedger({
+      calls: 3,
+      attempts: 5,
+      failures: 1,
+      callsWithUsage: 3,
+      callsWithoutUsage: 0,
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+      byModel: { 'some-model': { calls: 3, prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } },
+    });
+    console.log('[ledger with failures]\n' + lines.join('\n'));
+    expect(lines[0]).toContain('3 calls, 1 failed attempt,');
+  });
+
   test('calls the provider did not report usage for are named, not hidden', () => {
     const lines = formatUsageLedger({
       calls: 3,
+      attempts: 3,
+      failures: 0,
       callsWithUsage: 2,
       callsWithoutUsage: 1,
       prompt_tokens: 10,
@@ -198,6 +241,8 @@ describe('formatUsageLedger', () => {
     });
     console.log('[ledger partial]\n' + lines.join('\n'));
     expect(lines.join('\n')).toContain('1 call reported no usage');
+    // No failures: the total line stays exactly as it was.
+    expect(lines[0]).toContain('LLM usage: 3 calls, 15 tokens');
   });
 });
 

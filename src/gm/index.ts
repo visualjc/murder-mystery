@@ -126,13 +126,22 @@ export class GameMaster {
  * own `usage` object, never estimated from string length (ADR-0002).
  *
  * Calls a provider reported no usage for are stated rather than hidden: a
- * ledger that silently drops them would understate the session.
+ * ledger that silently drops them would understate the session. So are FAILED
+ * calls (panel finding, agy): a request that errored still left the machine and
+ * may still have been paid for, so a session where everything failed reports
+ * its failed attempts rather than claiming no call was made.
  */
 export function formatUsageLedger(usage: SessionUsage): string[] {
-  if (usage.calls === 0) return ['No LLM calls were made this session.'];
+  if (usage.calls === 0 && usage.failures === 0) return ['No LLM calls were made this session.'];
+
+  const failed = `${usage.failures} failed ${usage.failures === 1 ? 'attempt' : 'attempts'}`;
+  if (usage.calls === 0) {
+    return [`LLM usage: 0 completed calls, ${failed} — no tokens were reported for this session.`];
+  }
 
   const lines = [
     `LLM usage: ${usage.calls} ${usage.calls === 1 ? 'call' : 'calls'}, ` +
+      (usage.failures === 0 ? '' : `${failed}, `) +
       `${usage.total_tokens} tokens (${usage.prompt_tokens} prompt + ${usage.completion_tokens} completion)`,
   ];
   for (const model of Object.keys(usage.byModel).sort()) {

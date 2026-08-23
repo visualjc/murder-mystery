@@ -82,6 +82,8 @@ export type LoopDeps = {
 /** The ledger for a session that never built a client. */
 const NO_USAGE: SessionUsage = {
   calls: 0,
+  attempts: 0,
+  failures: 0,
   callsWithUsage: 0,
   callsWithoutUsage: 0,
   prompt_tokens: 0,
