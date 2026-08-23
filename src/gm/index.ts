@@ -15,9 +15,10 @@ import type { Suspect } from '../engine/cards.ts';
 import type { GameEvent } from '../engine/types.ts';
 import type { PlayerView } from '../engine/view.ts';
 import type { ChatClient, SessionUsage } from '../llm/index.ts';
+import { isVisibleTo } from '../engine/view.ts';
 import { CANNED_SCENARIO, requestScenario, type Scenario } from './scenario.ts';
-import { narrateEvents, type NarrationLine } from './narrator.ts';
-import { askSuspect, type SuspectAnswer } from './qa.ts';
+import { fallbackNarration, narrateEvents, type NarrationLine } from './narrator.ts';
+import { askSuspect, fallbackAnswer, type SuspectAnswer } from './qa.ts';
 
 export {
   CANNED_SCENARIO,
@@ -53,6 +54,21 @@ export {
   type OpponentPlan,
 } from './opponent.ts';
 
+/**
+ * Consecutive failed game-master calls after which the session stops calling
+ * the vendor at all.
+ *
+ * Two, because one failure is a blip and two in a row is an endpoint that is
+ * not coming back within this session — and every later call would cost the
+ * player the full timeout again, once per narration flush and once per
+ * question, for a reply that never arrives (panel finding, codex).
+ */
+const LLM_FAILURE_LIMIT = 2;
+
+/** Said once, on the turn the breaker opens. The session is offline from then on. */
+export const LLM_DISABLED_NOTICE =
+  'LLM disabled for this session after repeated failures — continuing offline';
+
 export type GameMasterOptions = {
   /** Per-role model overrides. Each defaults to the client's configured model. */
   readonly models?: {
@@ -60,6 +76,11 @@ export type GameMasterOptions = {
     readonly narration?: string;
     readonly qa?: string;
   };
+  /**
+   * Where a session-level notice goes — the loop's `io.write`. Called at most
+   * once, with {@link LLM_DISABLED_NOTICE}, if the breaker opens.
+   */
+  readonly onNotice?: (text: string) => void;
 };
 
 export class GameMaster {
@@ -67,10 +88,48 @@ export class GameMaster {
   readonly models: NonNullable<GameMasterOptions['models']>;
 
   #scenario: Scenario | null = null;
+  #consecutiveFailures = 0;
+  #llmDisabled = false;
+  readonly #onNotice: ((text: string) => void) | undefined;
 
   constructor(client: ChatClient, options: GameMasterOptions = {}) {
     this.client = client;
     this.models = options.models ?? {};
+    this.#onNotice = options.onNotice;
+  }
+
+  /** True once the breaker has opened: this session makes no further request. */
+  get llmDisabled(): boolean {
+    return this.#llmDisabled;
+  }
+
+  /**
+   * Run one game-master call behind the breaker, degrading to `offline` text
+   * once it has opened.
+   *
+   * A call is judged by the shared client's own ledger: failures went up and no
+   * response completed. The delta is what makes the judgement honest for an
+   * operation that makes more than one request — the scenario's 4xx retry can
+   * fail and then succeed, and that is a success, not a failure.
+   */
+  async #guarded<T>(offline: () => T, call: () => Promise<T>): Promise<T> {
+    if (this.#llmDisabled) return offline();
+
+    const before = this.client.usage;
+    const value = await call();
+    const after = this.client.usage;
+
+    if (after.failures === before.failures || after.calls > before.calls) {
+      this.#consecutiveFailures = 0;
+      return value;
+    }
+
+    this.#consecutiveFailures += 1;
+    if (this.#consecutiveFailures >= LLM_FAILURE_LIMIT && !this.#llmDisabled) {
+      this.#llmDisabled = true;
+      this.#onNotice?.(LLM_DISABLED_NOTICE);
+    }
+    return value;
   }
 
   /** The session's token ledger, straight from the shared client. */
@@ -89,9 +148,13 @@ export class GameMaster {
    */
   async openScenario(): Promise<Scenario> {
     if (this.#scenario !== null) return this.#scenario;
-    this.#scenario = await requestScenario(this.client, {
-      ...(this.models.scenario === undefined ? {} : { model: this.models.scenario }),
-    });
+    this.#scenario = await this.#guarded(
+      () => CANNED_SCENARIO,
+      () =>
+        requestScenario(this.client, {
+          ...(this.models.scenario === undefined ? {} : { model: this.models.scenario }),
+        }),
+    );
     return this.#scenario;
   }
 
@@ -101,23 +164,33 @@ export class GameMaster {
    * dropped before a prompt exists — passing the raw log is safe.
    */
   async narrate(view: PlayerView, events: readonly GameEvent[]): Promise<NarrationLine[]> {
-    return narrateEvents(this.client, {
-      scenario: this.#scenario ?? CANNED_SCENARIO,
-      viewer: view.you,
-      events,
-      ...(this.models.narration === undefined ? {} : { model: this.models.narration }),
-    });
+    return this.#guarded(
+      // Offline narration is filtered to the viewer exactly as the online path
+      // filters it: the breaker changes the WORDS, never who may read them.
+      () => fallbackNarration(events.filter((event) => isVisibleTo(event, view.you))),
+      () =>
+        narrateEvents(this.client, {
+          scenario: this.#scenario ?? CANNED_SCENARIO,
+          viewer: view.you,
+          events,
+          ...(this.models.narration === undefined ? {} : { model: this.models.narration }),
+        }),
+    );
   }
 
   /** Put one in-fiction question to one suspect, from the asker's view alone. */
   async ask(view: PlayerView, suspect: Suspect, question: string): Promise<SuspectAnswer> {
-    return askSuspect(this.client, {
-      scenario: this.#scenario ?? CANNED_SCENARIO,
-      view,
-      suspect,
-      question,
-      ...(this.models.qa === undefined ? {} : { model: this.models.qa }),
-    });
+    return this.#guarded(
+      () => fallbackAnswer(suspect),
+      () =>
+        askSuspect(this.client, {
+          scenario: this.#scenario ?? CANNED_SCENARIO,
+          view,
+          suspect,
+          question,
+          ...(this.models.qa === undefined ? {} : { model: this.models.qa }),
+        }),
+    );
   }
 }
 

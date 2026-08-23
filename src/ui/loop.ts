@@ -173,7 +173,9 @@ export async function runGame(options: LoopOptions, deps: LoopDeps): Promise<num
       io.write('(playing offline — the game is the same, the prose is plainer)');
     }
   }
-  const gm = client === null ? null : new GameMaster(client);
+  // The game master's one session-level notice — the breaker opening — goes to
+  // the player through the same channel as everything else it says.
+  const gm = client === null ? null : new GameMaster(client, { onNotice: (text) => io.write(text) });
 
   let state: GameState = createGame({ seed: options.seed, playerCount: options.players });
   let narrated = 0;

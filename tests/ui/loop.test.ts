@@ -280,6 +280,12 @@ describe('with a game master', () => {
       // The canned scenario and the engine's own sentences carry the game.
       expect(text).toContain('The dead: Doctor Alastair Vane');
       expect(text).toContain('── Case closed ──');
+      // The breaker opens after the second consecutive failure and says so
+      // once, through the loop's own io (panel finding, codex). The dead
+      // endpoint is then never called again: a whole game of narration flushes
+      // and it stops at the scenario's two exchanges plus the first flush's two.
+      expect(session.lines.filter((line) => line.includes('LLM disabled for this session'))).toHaveLength(1);
+      expect(vendor.requests).toHaveLength(4);
       // Every call failed: no tokens can be reported, but the attempts are.
       expect(text).not.toContain('No LLM calls were made this session.');
       expect(text).toMatch(/LLM usage: 0 completed calls, \d+ failed attempts?/);

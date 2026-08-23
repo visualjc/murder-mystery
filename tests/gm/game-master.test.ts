@@ -123,6 +123,92 @@ describe('one client, one ledger', () => {
   });
 });
 
+/**
+ * Panel finding (codex): before this, a game master whose endpoint had died
+ * kept calling it — every narration flush and every question paid the full
+ * timeout again, once per turn, for a reply that was never coming.
+ */
+describe('the circuit breaker', () => {
+  test('two consecutive failures switch the session offline: the vendor is never called again', async () => {
+    const vendor = startFakeVendor(() => errorResponse(500, 'down'));
+    try {
+      const notices: string[] = [];
+      const master = new GameMaster(clientFor(vendor.baseUrl, { retryBackoffMs: 1 }), {
+        onNotice: (text) => notices.push(text),
+      });
+      const view = playerView(standingInRoom(arrangedGame(), 'p1', 'Library'), 'p1');
+
+      const scenario = await master.openScenario(); // failure 1
+      const firstLines = await master.narrate(view, [view.events[0]!]); // failure 2 — opens
+      const requestsWhenOpened = vendor.requests.length;
+      console.log('[breaker] requests when opened ->', requestsWhenOpened, 'notices ->', notices);
+
+      expect(master.llmDisabled).toBe(true);
+      expect(requestsWhenOpened).toBeGreaterThan(0);
+
+      // Everything after this is offline text, and NOTHING reaches the vendor.
+      const laterLines = await master.narrate(view, [view.events[0]!]);
+      const answer = await master.ask(view, 'Colonel Mustard', 'Where were you?');
+      const secondAnswer = await master.ask(view, 'Mrs. White', 'And you?');
+
+      expect(vendor.requests).toHaveLength(requestsWhenOpened);
+      expect(scenario).toBe(CANNED_SCENARIO);
+      expect(firstLines.every((line) => line.source === 'fallback')).toBe(true);
+      expect(laterLines).toHaveLength(1);
+      expect(laterLines[0]?.source).toBe('fallback');
+      expect(answer.source).toBe('fallback');
+      expect(secondAnswer.source).toBe('fallback');
+
+      // Said exactly once, however many calls are made afterwards.
+      expect(notices).toEqual(['LLM disabled for this session after repeated failures — continuing offline']);
+      // The ledger records what was spent before the breaker opened and stops.
+      expect(master.usage.failures).toBe(2);
+      expect(master.usage.attempts).toBe(requestsWhenOpened);
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('a single failure followed by a success does not open the breaker', async () => {
+    let failing = true;
+    const vendor = startFakeVendor(() =>
+      failing
+        ? errorResponse(500, 'a blip')
+        : completionResponse({ content: JSON.stringify(['A door closes somewhere upstairs.']) }),
+    );
+    try {
+      const notices: string[] = [];
+      const master = new GameMaster(clientFor(vendor.baseUrl, { retryBackoffMs: 1 }), {
+        onNotice: (text) => notices.push(text),
+      });
+      const view = playerView(standingInRoom(arrangedGame(), 'p1', 'Library'), 'p1');
+      const turn = [view.events[0]!];
+
+      const failed = await master.narrate(view, turn);
+      failing = false;
+      const recovered = await master.narrate(view, turn);
+      failing = true;
+      const failedAgain = await master.narrate(view, turn);
+      failing = false;
+      const stillReaching = await master.narrate(view, turn);
+      console.log('[breaker transient] requests ->', vendor.requests.length, 'notices ->', notices);
+
+      expect(failed[0]?.source).toBe('fallback');
+      expect(recovered[0]?.source).toBe('llm');
+      expect(failedAgain[0]?.source).toBe('fallback');
+      // The success reset the count, so the second failure is a first failure
+      // again — the vendor is still being asked.
+      expect(stillReaching[0]?.source).toBe('llm');
+      expect(master.llmDisabled).toBe(false);
+      expect(notices).toEqual([]);
+      // 2 (failure + retry) + 1 + 2 + 1
+      expect(vendor.requests).toHaveLength(6);
+    } finally {
+      await vendor.stop();
+    }
+  });
+});
+
 describe('narration is scoped to the player it is for', () => {
   test('raw turn events handed to the game master are filtered to the viewer', async () => {
     // p2 suggests; p3 shows p2 a card. p1 may know only that it happened.
