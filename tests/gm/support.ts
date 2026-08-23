@@ -31,8 +31,24 @@ export function clientFor(
   );
 }
 
+/** The messages the game master sent, as plain role/content pairs. */
+export function messagesOf(request: RecordedRequest): { role: string; content: string }[] {
+  const messages =
+    (request.body as { messages?: { role?: unknown; content?: unknown }[] }).messages ?? [];
+  return messages.map((message) => ({
+    role: String(message.role ?? ''),
+    content: String(message.content ?? ''),
+  }));
+}
+
 /** Every message body the game master sent, concatenated — what the model would read. */
 export function promptTextOf(request: RecordedRequest): string {
-  const messages = (request.body as { messages?: { content?: unknown }[] }).messages ?? [];
-  return messages.map((message) => String(message.content ?? '')).join('\n');
+  return messagesOf(request)
+    .map((message) => message.content)
+    .join('\n');
+}
+
+/** The content of the first message with this role, or '' if there is none. */
+export function messageOfRole(request: RecordedRequest, role: string): string {
+  return messagesOf(request).find((message) => message.role === role)?.content ?? '';
 }

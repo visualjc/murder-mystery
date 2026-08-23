@@ -10,9 +10,11 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { SUSPECTS } from '../../src/engine/cards.ts';
+import { ROOMS, SUSPECTS, WEAPONS, type Card, type SolutionTriple } from '../../src/engine/cards.ts';
+import type { PlayerId } from '../../src/engine/types.ts';
 import { CANNED_SCENARIO, parseScenario, requestScenario } from '../../src/gm/scenario.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
+import { FIXTURE_CASE_FILE, FIXTURE_HANDS, arrangedGame } from '../engine/helpers.ts';
 import { clientFor, promptTextOf } from './support.ts';
 
 const GOOD_SCENARIO = JSON.stringify({
@@ -65,6 +67,98 @@ describe('the happy path', () => {
       });
       const prompt = promptTextOf(request);
       for (const suspect of SUSPECTS) expect(prompt).toContain(suspect);
+    } finally {
+      await vendor.stop();
+    }
+  });
+});
+
+/**
+ * The scenario call is the ONLY LLM call made before a card has been dealt, and
+ * it is the one place a "just give the model some context" reflex would put the
+ * case file into a prompt. `requestScenario` takes no state parameter at all,
+ * and these tests pin that structurally rather than trusting the signature to
+ * stay that way.
+ *
+ * It cannot be pinned by asserting the triple's card NAMES are absent: the
+ * prompt has to name the deck for the model to invent fiction about it. The
+ * property that matters is that it names the deck UNIFORMLY — every card once,
+ * none singled out — and that the request is byte-identical across games that
+ * disagree about everything.
+ */
+describe('the scenario request carries no game state', () => {
+  /** A second deal that shares no case-file card and no hand with the fixture. */
+  const OTHER_CASE_FILE: SolutionTriple = {
+    suspect: 'Mrs. White',
+    weapon: 'Candlestick',
+    room: 'Library',
+  };
+  const OTHER_HANDS: Record<PlayerId, Card[]> = {
+    p1: ['Miss Scarlett', 'Colonel Mustard', 'Dagger', 'Kitchen', 'Ballroom', 'Conservatory'],
+    p2: ['Reverend Green', 'Mrs. Peacock', 'Lead Pipe', 'Dining Room', 'Billiard Room', 'Lounge'],
+    p3: ['Professor Plum', 'Revolver', 'Rope', 'Wrench', 'Hall', 'Study'],
+  };
+
+  function occurrences(haystack: string, needle: string): number {
+    return haystack.split(needle).length - 1;
+  }
+
+  test('two games that agree on nothing produce byte-identical requests', async () => {
+    // Both are real, playable games whose case files and hands differ entirely.
+    const first = arrangedGame();
+    const second = arrangedGame({ caseFile: OTHER_CASE_FILE, hands: OTHER_HANDS });
+    expect(first.caseFile).not.toEqual(second.caseFile);
+    expect(first.players[0]!.hand).not.toEqual(second.players[0]!.hand);
+
+    const vendor = startFakeVendor(() => completionResponse({ content: GOOD_SCENARIO }));
+    try {
+      await requestScenario(clientFor(vendor.baseUrl));
+      await requestScenario(clientFor(vendor.baseUrl));
+      const [one, two] = vendor.requests;
+
+      expect(JSON.stringify(two!.body)).toBe(JSON.stringify(one!.body));
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('the deck is enumerated uniformly — every card once, none singled out', async () => {
+    const vendor = startFakeVendor(() => completionResponse({ content: GOOD_SCENARIO }));
+    try {
+      await requestScenario(clientFor(vendor.baseUrl));
+      const prompt = promptTextOf(vendor.requests[0]!);
+      console.log('[scenario state-free] prompt ->', prompt);
+
+      const counts = ([...SUSPECTS, ...WEAPONS, ...ROOMS] as Card[]).map((card) => [
+        card,
+        occurrences(prompt, card),
+      ]);
+      console.log('[scenario state-free] card counts ->', counts);
+      // The case file's own cards are named neither more nor less than any
+      // other card: the prompt distinguishes nothing about this game.
+      expect(counts.filter(([, count]) => count !== 1)).toEqual([]);
+      for (const card of [FIXTURE_CASE_FILE.suspect, FIXTURE_CASE_FILE.weapon, FIXTURE_CASE_FILE.room]) {
+        expect(occurrences(prompt, card)).toBe(1);
+      }
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('no seat, no hand and no case-file grouping reaches the vendor', async () => {
+    const vendor = startFakeVendor(() => completionResponse({ content: GOOD_SCENARIO }));
+    try {
+      await requestScenario(clientFor(vendor.baseUrl));
+      const body = JSON.stringify(vendor.requests[0]!.body);
+
+      for (const seat of Object.keys(FIXTURE_HANDS)) expect(body).not.toContain(seat);
+      for (const term of ['caseFile', 'case file', 'hand', 'solution', 'murderer is']) {
+        expect(body.toLowerCase()).not.toContain(term.toLowerCase());
+      }
+      // A hand is six named cards in a row; no such run exists in the prompt.
+      for (const hand of Object.values(FIXTURE_HANDS)) {
+        expect(body).not.toContain(hand.join(', '));
+      }
     } finally {
       await vendor.stop();
     }

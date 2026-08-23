@@ -17,11 +17,32 @@ import { describeEvent, playerView } from '../../src/engine/view.ts';
 import type { GameEvent, GameState } from '../../src/engine/types.ts';
 import { CANNED_SCENARIO } from '../../src/gm/scenario.ts';
 import { askSuspect, visibleFactsFor } from '../../src/gm/qa.ts';
+import { GameMaster } from '../../src/gm/index.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
 import { FIXTURE_CASE_FILE, FIXTURE_HANDS, arrangedGame, placeToken, standingInRoom } from '../engine/helpers.ts';
-import { clientFor, promptTextOf } from './support.ts';
+import { clientFor, messageOfRole, promptTextOf } from './support.ts';
 
 const QUESTION = 'Where were you when the lights went out?';
+
+/**
+ * The cards a prompt built from p1's view of `loadedGame` may legitimately
+ * name: the suspect being asked, the players' own tokens (public), and the two
+ * rooms those tokens stand in (public). Everything else is a leak.
+ */
+const WHITELIST: ReadonlySet<Card> = new Set<Card>([
+  'Colonel Mustard',
+  'Miss Scarlett',
+  'Mrs. White',
+  'Library',
+  'Lounge',
+]);
+
+/** Every card of the 21 that `text` names outside the whitelist. */
+function leakedCards(text: string, allowed: ReadonlySet<Card> = WHITELIST): Card[] {
+  return ([...SUSPECTS, ...WEAPONS, ...ROOMS] as Card[]).filter(
+    (card) => text.includes(card) && !allowed.has(card),
+  );
+}
 
 /**
  * A game whose VISIBLE log is stuffed with the case file's own card names: p1
@@ -99,18 +120,7 @@ describe('the prompt carries only what the asker may know', () => {
       });
       const body = JSON.stringify(vendor.requests[0]!.body);
 
-      // The whitelist, stated out loud: the suspect being asked, the players'
-      // own tokens (public), and the two rooms those tokens stand in (public).
-      const allowed = new Set<Card>([
-        'Colonel Mustard',
-        'Miss Scarlett',
-        'Mrs. White',
-        'Library',
-        'Lounge',
-      ]);
-      const leaked = ([...SUSPECTS, ...WEAPONS, ...ROOMS] as Card[]).filter(
-        (card) => body.includes(card) && !allowed.has(card),
-      );
+      const leaked = leakedCards(body);
       console.log('[qa whitelist] leaked ->', leaked);
       expect(leaked).toEqual([]);
 
@@ -197,6 +207,68 @@ describe('the asker’s own history reaches the persona', () => {
       for (const card of ['Reverend Green', 'Dagger', 'Kitchen']) {
         expect(body).not.toContain(card);
       }
+    } finally {
+      await vendor.stop();
+    }
+  });
+});
+
+/**
+ * The scenario is the one part of a Q&A prompt written by a model rather than
+ * by the engine, so it is the one part an attacker (or a merely careless
+ * provider) controls. A scenario that names cards everywhere is FICTION: it
+ * flows into the persona and the setting, where it says nothing true about this
+ * game. What must not happen is the facts section — the whitelist the leak
+ * defense rests on — picking up any hidden state along the way.
+ */
+describe('a hostile LLM-written scenario cannot smuggle state into the facts', () => {
+  const HOSTILE_SCENARIO = JSON.stringify({
+    victim: 'Professor Plum, found in the Study beside the Wrench',
+    setting: 'The Kitchen, the Ballroom and the Conservatory, and a Lead Pipe on every mantel.',
+    intro: 'It was Professor Plum, in the Study, with the Wrench.',
+    suspects: SUSPECTS.map((suspect) => ({
+      name: suspect,
+      persona: `${suspect} never leaves the Billiard Room without the Revolver.`,
+    })),
+  });
+
+  test('the fiction flows through, the facts section gains nothing', async () => {
+    const vendor = startFakeVendor((request) =>
+      (request.body as { response_format?: unknown }).response_format === undefined
+        ? completionResponse({ content: 'I have nothing to add.' })
+        : completionResponse({ content: HOSTILE_SCENARIO }),
+    );
+    try {
+      const master = new GameMaster(clientFor(vendor.baseUrl));
+      const scenario = await master.openScenario();
+      const answer = await master.ask(playerView(loadedGame(), 'p1'), 'Colonel Mustard', QUESTION);
+
+      expect(scenario.source).toBe('llm');
+      expect(answer.source).toBe('llm');
+
+      const qa = vendor.requests[1]!;
+      const system = messageOfRole(qa, 'system');
+      const user = messageOfRole(qa, 'user');
+      console.log('[qa hostile scenario] user ->', user);
+
+      // The hostile fiction really did reach the model — this is not passing
+      // because the scenario was quietly dropped.
+      expect(system).toContain(scenario.personas['Colonel Mustard']);
+      expect(system).toContain(scenario.setting);
+      expect(system).toContain('Billiard Room');
+
+      // The facts section is where game state would land. It gains nothing.
+      expect(leakedCards(user)).toEqual([]);
+      expect(user).not.toContain('Professor Plum');
+      expect(user).not.toContain('Wrench');
+      expect(user).not.toContain('Study');
+
+      // Every card the system message names comes from the scenario strings and
+      // from nowhere else: strip them and the rest is inside the whitelist.
+      const withoutFiction = [scenario.victim, scenario.setting, scenario.personas['Colonel Mustard']]
+        .reduce((text, fiction) => text.split(fiction).join(' '), system);
+      console.log('[qa hostile scenario] system minus fiction ->', withoutFiction);
+      expect(leakedCards(withoutFiction)).toEqual([]);
     } finally {
       await vendor.stop();
     }
