@@ -36,7 +36,13 @@ export type NewGameOptions = {
   readonly playerCount?: number;
 };
 
-export const MIN_PLAYERS = 2;
+/**
+ * Classic Clue's minimum. Two seats would split all 18 undealt cards between
+ * them, so each player could name the other's whole hand by subtracting their
+ * own from the deck — the deduction game disappears. Three is the smallest
+ * roster where a hand stays hidden.
+ */
+export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = SUSPECTS.length;
 
 /** Default roster for a given size: p1..pN taking suspects in deck order. */

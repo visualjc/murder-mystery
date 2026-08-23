@@ -34,6 +34,14 @@ describe('defaultRoster', () => {
     expect(() => defaultRoster(7)).toThrow(IllegalActionError);
     expect(() => defaultRoster(3.5)).toThrow(IllegalActionError);
   });
+
+  // Corrected semantics: a two-hand deal splits all 18 undealt cards between
+  // the two seats, so each player knows the other's hand exactly by subtracting
+  // their own from the deck — no deduction left. Classic Clue's minimum is 3.
+  test('rejects a two-player roster: two hands give each seat perfect knowledge of the other', () => {
+    expect(MIN_PLAYERS).toBe(3);
+    expect(() => defaultRoster(2)).toThrow(IllegalActionError);
+  });
 });
 
 describe('drawCaseFile', () => {
@@ -205,20 +213,23 @@ describe('createGame', () => {
     ]);
   });
 
+  // Each roster below is legal in size (3 seats) so the rejection can only come
+  // from the defect under test, never from the roster-size check.
   test('rejects duplicate ids, duplicate characters and non-suspects', () => {
     const base = { id: 'a', character: 'Miss Scarlett' } as const;
+    const third = { id: 'c', character: 'Mrs. Peacock' } as const;
     expect(() =>
-      createGame({ seed: 1, players: [base, { id: 'a', character: 'Mrs. White' }] }),
+      createGame({ seed: 1, players: [base, { id: 'a', character: 'Mrs. White' }, third] }),
     ).toThrow(IllegalActionError);
     expect(() =>
-      createGame({ seed: 1, players: [base, { id: 'b', character: 'Miss Scarlett' }] }),
+      createGame({ seed: 1, players: [base, { id: 'b', character: 'Miss Scarlett' }, third] }),
     ).toThrow(IllegalActionError);
     expect(() =>
-      createGame({ seed: 1, players: [base, { id: 'b', character: 'Rope' as never }] }),
+      createGame({ seed: 1, players: [base, { id: 'b', character: 'Rope' as never }, third] }),
     ).toThrow(IllegalActionError);
-    expect(() => createGame({ seed: 1, players: [{ id: '', character: 'Mrs. White' }, base] })).toThrow(
-      IllegalActionError,
-    );
+    expect(() =>
+      createGame({ seed: 1, players: [{ id: '', character: 'Mrs. White' }, base, third] }),
+    ).toThrow(IllegalActionError);
   });
 
   test('rejects passing both a roster and a player count', () => {
@@ -229,6 +240,8 @@ describe('createGame', () => {
 
   test('rejects a roster that is too small or too large', () => {
     expect(() => createGame({ seed: 1, playerCount: 1 })).toThrow(IllegalActionError);
+    // Corrected semantics: 2 is now too small — see the two-player roster test.
+    expect(() => createGame({ seed: 1, playerCount: 2 })).toThrow(IllegalActionError);
     expect(() => createGame({ seed: 1, playerCount: 7 })).toThrow(IllegalActionError);
   });
 });
