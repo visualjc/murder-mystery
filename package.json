@@ -1,0 +1,13 @@
+{
+  "name": "murder-mystery-test",
+  "private": true,
+  "type": "module",
+  "module": "src/cli.ts",
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
