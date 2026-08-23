@@ -54,6 +54,11 @@ export interface ModelUsage {
  * Running total for one client's lifetime — TOKEN-COUNT attribution v1
  * (orchestrator resolution 5rwbt08h): what is accounted for is token counts per
  * model, read from each response, not dollar cost.
+ *
+ * `byModel` is keyed by the LOWERCASED model id. Poe matches model ids
+ * case-insensitively and echoes back whatever casing the request used, so
+ * keying on the raw string would silently split one model's tokens across two
+ * buckets and understate its share.
  */
 export interface SessionUsage {
   calls: number;
@@ -63,6 +68,11 @@ export interface SessionUsage {
   completion_tokens: number;
   total_tokens: number;
   byModel: Record<string, ModelUsage>;
+}
+
+/** The attribution key for a model id: case- and whitespace-insensitive. */
+export function usageKeyFor(model: string): string {
+  return model.trim().toLowerCase();
 }
 
 const BODY_EXCERPT_LIMIT = 500;
@@ -211,7 +221,8 @@ export class ChatClient {
     this.#completionTokens += result.usage.completion_tokens;
     this.#totalTokens += result.usage.total_tokens;
 
-    const totals = this.#byModel.get(result.model) ?? {
+    const key = usageKeyFor(result.model);
+    const totals = this.#byModel.get(key) ?? {
       calls: 0,
       prompt_tokens: 0,
       completion_tokens: 0,
@@ -221,7 +232,7 @@ export class ChatClient {
     totals.prompt_tokens += result.usage.prompt_tokens;
     totals.completion_tokens += result.usage.completion_tokens;
     totals.total_tokens += result.usage.total_tokens;
-    this.#byModel.set(result.model, totals);
+    this.#byModel.set(key, totals);
   }
 }
 

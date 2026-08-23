@@ -13,11 +13,11 @@ export const API_KEY_ENV = "POE_API_KEY";
 export const ENV_FILE_NAME = ".env.local";
 
 /**
- * Default model. Poe addresses bots by name through the OpenAI-compatible
- * endpoint. Overridable via POE_MODEL or per call, so this is a starting point
- * rather than a commitment.
+ * Default model, verified present in `GET https://api.poe.com/v1/models`
+ * (2026-08-23). Poe's ids are lowercase-hyphenated and it matches them
+ * case-insensitively. Overridable via POE_MODEL or per call.
  */
-export const DEFAULT_MODEL = "Claude-Sonnet-4.5";
+export const DEFAULT_MODEL = "claude-sonnet-4.5";
 
 export const DEFAULT_TIMEOUT_MS = 60_000;
 

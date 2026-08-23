@@ -75,6 +75,8 @@ describe("loadLlmConfig", () => {
     expect(config.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(config.baseUrl).toBe("https://api.poe.com/v1");
     expect(config.model).toBe(DEFAULT_MODEL);
+    // Verified against GET https://api.poe.com/v1/models — Poe's ids are lowercase-hyphenated.
+    expect(DEFAULT_MODEL).toBe("claude-sonnet-4.5");
     expect(config.timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
     expect(config.retryBackoffMs).toBe(DEFAULT_RETRY_BACKOFF_MS);
   });

@@ -9,6 +9,7 @@ export {
   createChatClient,
   parseCompletion,
   parseUsage,
+  usageKeyFor,
   type ChatMessage,
   type ChatOptions,
   type ChatOutcome,

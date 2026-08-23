@@ -168,17 +168,49 @@ describe("ChatClient — token accounting", () => {
       expect(session.completion_tokens).toBe(15);
       expect(session.total_tokens).toBe(15 + 16 + 17);
 
-      expect(session.byModel["Model-A"]).toEqual({
+      expect(session.byModel["model-a"]).toEqual({
         calls: 1,
         prompt_tokens: 10,
         completion_tokens: 5,
         total_tokens: 15,
       });
-      expect(session.byModel["Model-B"]).toEqual({
+      expect(session.byModel["model-b"]).toEqual({
         calls: 2,
         prompt_tokens: 23,
         completion_tokens: 10,
         total_tokens: 33,
+      });
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test("attribution is case-insensitive: one model reported in two casings is one bucket", async () => {
+    // Poe matches model ids case-insensitively and echoes back whatever casing
+    // the caller sent, so keying the ledger on the raw string would split one
+    // model's tokens in two and understate its share.
+    const vendor = startFakeVendor((_request, index) =>
+      completionResponse({
+        content: "x",
+        model: index === 0 ? "Claude-Sonnet-4.5" : "claude-sonnet-4.5",
+        usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+      }),
+    );
+
+    try {
+      const client = clientFor(vendor.baseUrl);
+      await client.chat([{ role: "user", content: "one" }]);
+      await client.chat([{ role: "user", content: "two" }]);
+
+      const session = client.usage;
+      console.log("[case-insensitive attribution] byModel ->", session.byModel);
+
+      expect(Object.keys(session.byModel)).toEqual(["claude-sonnet-4.5"]);
+      expect(session.byModel["claude-sonnet-4.5"]).toEqual({
+        calls: 2,
+        prompt_tokens: 200,
+        completion_tokens: 20,
+        total_tokens: 220,
       });
     } finally {
       await vendor.stop();
@@ -198,10 +230,10 @@ describe("ChatClient — token accounting", () => {
       await client.chat([{ role: "user", content: "hi" }]);
       const snapshot = client.usage;
       snapshot.total_tokens = 99_999;
-      snapshot.byModel["Model-A"]!.total_tokens = 99_999;
+      snapshot.byModel["model-a"]!.total_tokens = 99_999;
       console.log("[snapshot isolation] after mutation, client sees ->", client.usage);
       expect(client.usage.total_tokens).toBe(7);
-      expect(client.usage.byModel["Model-A"]!.total_tokens).toBe(7);
+      expect(client.usage.byModel["model-a"]!.total_tokens).toBe(7);
     } finally {
       await vendor.stop();
     }
