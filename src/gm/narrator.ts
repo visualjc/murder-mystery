@@ -8,13 +8,16 @@
  * comes back out on any failure: narration is discardable by construction
  * (CONTEXT.md "Narration", ADR-0001).
  *
- * The caller decides whose events these are — pass `visibleEvents(state, id)`
- * for a player, `publicEvents(state)` for the table. Nothing here filters
- * visibility, because nothing here knows who is reading.
+ * Narration is always FOR someone, and the request says who. Whatever events
+ * the caller hands over are run through the engine's own `isVisibleTo` before a
+ * prompt is built, so a caller slicing a turn off the raw `state.events` cannot
+ * put another player's private refutation card into a vendor request — the
+ * defense does not depend on every call site remembering to filter first
+ * (ADR-0001: prompts carry only what the receiving player is entitled to know).
  */
 
-import type { GameEvent } from '../engine/types.ts';
-import { describeEvent } from '../engine/view.ts';
+import type { GameEvent, PlayerId } from '../engine/types.ts';
+import { describeEvent, isVisibleTo } from '../engine/view.ts';
 import type { ChatClient, ChatMessage } from '../llm/index.ts';
 import type { Scenario } from './scenario.ts';
 
@@ -94,17 +97,24 @@ export function parseNarration(text: string, count: number): (string | null)[] {
 
 export type NarrationRequest = {
   readonly scenario: Scenario;
+  /** Who this narration is for. Events not addressed to them are dropped. */
+  readonly viewer: PlayerId;
+  /** Candidate events. Filtered to the viewer's before anything else happens. */
   readonly events: readonly GameEvent[];
   /** Model for this call only; defaults to the client's configured model. */
   readonly model?: string;
 };
 
-/** Narrate a turn's events, falling back to the engine's own sentences per event. */
+/**
+ * Narrate a turn's events to one viewer, falling back to the engine's own
+ * sentences per event. Events the viewer may not see are dropped, not muted:
+ * they get no line, because there is nothing to tell them about.
+ */
 export async function narrateEvents(
   client: ChatClient,
   request: NarrationRequest,
 ): Promise<NarrationLine[]> {
-  const { events } = request;
+  const events = request.events.filter((event) => isVisibleTo(event, request.viewer));
   if (events.length === 0) return [];
 
   const reply = await client.tryChat(narrationMessages(request.scenario, events), {

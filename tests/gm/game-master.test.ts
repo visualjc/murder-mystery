@@ -10,12 +10,13 @@
 import { describe, expect, test } from 'bun:test';
 
 import { SUSPECTS } from '../../src/engine/cards.ts';
-import { playerView } from '../../src/engine/view.ts';
+import { makeSuggestion } from '../../src/engine/actions.ts';
+import { describeEvent, playerView } from '../../src/engine/view.ts';
 import { CANNED_SCENARIO } from '../../src/gm/scenario.ts';
 import { GameMaster, formatUsageLedger } from '../../src/gm/index.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
 import { arrangedGame, standingInRoom } from '../engine/helpers.ts';
-import { clientFor } from './support.ts';
+import { clientFor, promptTextOf } from './support.ts';
 
 const MODELS = { scenario: 'Scenario-Model', narration: 'Narration-Model', qa: 'Qa-Model' };
 
@@ -60,7 +61,7 @@ describe('one client, one ledger', () => {
       const view = playerView(state, 'p1');
 
       const scenario = await master.openScenario();
-      const lines = await master.narrate([view.events[0]!]);
+      const lines = await master.narrate(view, [view.events[0]!]);
       const answer = await master.ask(view, 'Colonel Mustard', 'Who let you in?');
       console.log('[game master] usage ->', client.usage);
 
@@ -122,13 +123,44 @@ describe('one client, one ledger', () => {
   });
 });
 
+describe('narration is scoped to the player it is for', () => {
+  test('raw turn events handed to the game master are filtered to the viewer', async () => {
+    // p2 suggests; p3 shows p2 a card. p1 may know only that it happened.
+    const state = makeSuggestion(standingInRoom(arrangedGame(), 'p2', 'Kitchen'), {
+      suspect: 'Reverend Green',
+      weapon: 'Dagger',
+    });
+    const shown = state.events.find((event) => event.type === 'refutation-card-shown')!;
+    const refuted = state.events.find((event) => event.type === 'suggestion-refuted')!;
+
+    const vendor = startFakeVendor(() =>
+      completionResponse({ content: JSON.stringify(['Something passes between them.']) }),
+    );
+    try {
+      const master = new GameMaster(clientFor(vendor.baseUrl));
+      // The whole RAW log, exactly as a careless caller would pass it.
+      const lines = await master.narrate(playerView(state, 'p1'), state.events);
+      const prompt = promptTextOf(vendor.requests[0]!);
+      console.log('[gm narrate viewer] ->', prompt);
+
+      expect(prompt).not.toContain(describeEvent(shown));
+      expect(prompt).toContain(describeEvent(refuted));
+      expect(lines.some((line) => line.event === shown)).toBe(false);
+      expect(lines.some((line) => line.event === refuted)).toBe(true);
+    } finally {
+      await vendor.stop();
+    }
+  });
+});
+
 describe('formatUsageLedger', () => {
   test('renders the session total and a line per model', async () => {
     const vendor = roleVendor();
     try {
       const master = new GameMaster(clientFor(vendor.baseUrl), { models: MODELS });
+      const view = playerView(standingInRoom(arrangedGame(), 'p1', 'Library'), 'p1');
       await master.openScenario();
-      await master.narrate([]);
+      await master.narrate(view, []);
       const lines = formatUsageLedger(master.usage);
       console.log('[ledger]\n' + lines.join('\n'));
 

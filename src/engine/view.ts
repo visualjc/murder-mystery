@@ -14,11 +14,19 @@ import type { Position } from './board.ts';
 import type { GameEvent, GameState, PlayerId, TurnPhase } from './types.ts';
 import { IllegalActionError } from './types.ts';
 
+/**
+ * Whether one event is addressed to a given player — the whole visibility rule,
+ * in one place. Exported so a consumer holding loose events (the narrator, which
+ * is handed a turn's worth) applies the SAME rule the log projection does,
+ * rather than trusting whoever passed them in.
+ */
+export function isVisibleTo(event: GameEvent, playerId: PlayerId): boolean {
+  return event.visibleTo === 'all' || event.visibleTo.includes(playerId);
+}
+
 /** Events a given player is entitled to see, in order. */
 export function visibleEvents(state: GameState, playerId: PlayerId): GameEvent[] {
-  return state.events.filter(
-    (event) => event.visibleTo === 'all' || event.visibleTo.includes(playerId),
-  );
+  return state.events.filter((event) => isVisibleTo(event, playerId));
 }
 
 /** Events every player can see. Safe to show to a spectator or a narrator. */

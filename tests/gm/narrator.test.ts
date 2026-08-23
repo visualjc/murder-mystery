@@ -11,7 +11,7 @@ import { describe, expect, test } from 'bun:test';
 import { makeSuggestion, rollDice } from '../../src/engine/actions.ts';
 import { createGame } from '../../src/engine/setup.ts';
 import { describeEvent, visibleEvents } from '../../src/engine/view.ts';
-import type { GameEvent } from '../../src/engine/types.ts';
+import type { GameEvent, GameState } from '../../src/engine/types.ts';
 import { CANNED_SCENARIO } from '../../src/gm/scenario.ts';
 import { narrateEvents } from '../../src/gm/narrator.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
@@ -29,6 +29,18 @@ function turnEvents(): GameEvent[] {
   return [...visibleEvents(rolled, 'p1'), ...visibleEvents(suggested, 'p1')].slice(0, 6);
 }
 
+/**
+ * A refutation between two OTHER players: p2 suggests, p3 holds exactly one
+ * matching card and shows it to p2 alone. p1 is entitled to know that a
+ * refutation happened, and to nothing else about it.
+ */
+function refutationBetweenOthers(): GameState {
+  return makeSuggestion(standingInRoom(arrangedGame(), 'p2', 'Kitchen'), {
+    suspect: 'Reverend Green',
+    weapon: 'Dagger',
+  });
+}
+
 describe('narration', () => {
   test('one call per turn covers the whole batch of events', async () => {
     const events = turnEvents();
@@ -40,7 +52,7 @@ describe('narration', () => {
     );
     try {
       const client = clientFor(vendor.baseUrl);
-      const lines = await narrateEvents(client, { scenario: CANNED_SCENARIO, events });
+      const lines = await narrateEvents(client, { scenario: CANNED_SCENARIO, viewer: 'p1', events });
       console.log('[narration] lines ->', lines.map((line) => line.text));
 
       expect(vendor.requests).toHaveLength(1);
@@ -67,6 +79,7 @@ describe('narration', () => {
     try {
       const lines = await narrateEvents(clientFor(vendor.baseUrl), {
         scenario: CANNED_SCENARIO,
+        viewer: 'p1',
         events,
       });
       console.log('[narration failed] ->', lines.map((line) => line.text));
@@ -89,6 +102,7 @@ describe('narration', () => {
     try {
       const lines = await narrateEvents(clientFor(vendor.baseUrl), {
         scenario: CANNED_SCENARIO,
+        viewer: 'p1',
         events,
       });
       expect(lines.every((line) => line.source === 'fallback')).toBe(true);
@@ -106,6 +120,7 @@ describe('narration', () => {
     try {
       const lines = await narrateEvents(clientFor(vendor.baseUrl), {
         scenario: CANNED_SCENARIO,
+        viewer: 'p1',
         events,
       });
       console.log('[narration ragged] ->', lines.map((line) => [line.source, line.text]));
@@ -127,7 +142,88 @@ describe('narration', () => {
     const vendor = startFakeVendor(() => completionResponse({ content: '[]' }));
     try {
       const client = clientFor(vendor.baseUrl);
-      const lines = await narrateEvents(client, { scenario: CANNED_SCENARIO, events: [] });
+      const lines = await narrateEvents(client, { scenario: CANNED_SCENARIO, viewer: 'p1', events: [] });
+      expect(lines).toEqual([]);
+      expect(vendor.requests).toHaveLength(0);
+      expect(client.usage.calls).toBe(0);
+    } finally {
+      await vendor.stop();
+    }
+  });
+});
+
+/**
+ * Defense in depth. The caller says WHOSE narration this is; the narrator
+ * applies the engine's own visibility rule to whatever it was handed. A caller
+ * that slices raw turn events off `state.events` — the obvious mistake — cannot
+ * put another player's private card into a prompt.
+ */
+describe('the narrator filters for its viewer', () => {
+  test('a private card shown between two other players never reaches the vendor', async () => {
+    const state = refutationBetweenOthers();
+    const refuted = state.events.find((event) => event.type === 'suggestion-refuted')!;
+    const shown = state.events.find((event) => event.type === 'refutation-card-shown')!;
+
+    // The private event really does name a card, and p1 really may not see it.
+    expect(describeEvent(shown)).toContain('Reverend Green');
+    expect(visibleEvents(state, 'p1')).not.toContain(shown);
+    expect(visibleEvents(state, 'p2')).toContain(shown);
+
+    const vendor = startFakeVendor(() =>
+      completionResponse({ content: JSON.stringify(['A card changes hands in silence.']) }),
+    );
+    try {
+      // The careless caller: the tail of the RAW log, unfiltered, for p1.
+      const lines = await narrateEvents(clientFor(vendor.baseUrl), {
+        scenario: CANNED_SCENARIO,
+        viewer: 'p1',
+        events: [refuted, shown],
+      });
+      const prompt = promptTextOf(vendor.requests[0]!);
+      console.log('[narration viewer-filtered] prompt ->', prompt);
+
+      expect(prompt).not.toContain('Reverend Green');
+      // What p1 may see still narrates — the filter drops, it does not mute.
+      expect(prompt).toContain(describeEvent(refuted));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]!.event).toBe(refuted);
+      expect(lines[0]!.text).toBe('A card changes hands in silence.');
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('the player the card was shown to still hears about it', async () => {
+    const state = refutationBetweenOthers();
+    const shown = state.events.find((event) => event.type === 'refutation-card-shown')!;
+    const vendor = startFakeVendor(() => errorResponse(500, 'no narrator today'));
+    try {
+      const lines = await narrateEvents(clientFor(vendor.baseUrl), {
+        scenario: CANNED_SCENARIO,
+        viewer: 'p2',
+        events: [shown],
+      });
+      console.log('[narration viewer p2] ->', lines.map((line) => line.text));
+
+      expect(lines).toHaveLength(1);
+      expect(lines[0]!.text).toBe(describeEvent(shown));
+      expect(lines[0]!.text).toContain('Reverend Green');
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('a turn with nothing visible to the viewer costs no call at all', async () => {
+    const state = refutationBetweenOthers();
+    const shown = state.events.find((event) => event.type === 'refutation-card-shown')!;
+    const vendor = startFakeVendor(() => completionResponse({ content: '["never asked"]' }));
+    try {
+      const client = clientFor(vendor.baseUrl);
+      const lines = await narrateEvents(client, {
+        scenario: CANNED_SCENARIO,
+        viewer: 'p1',
+        events: [shown],
+      });
       expect(lines).toEqual([]);
       expect(vendor.requests).toHaveLength(0);
       expect(client.usage.calls).toBe(0);

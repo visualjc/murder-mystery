@@ -95,10 +95,15 @@ export class GameMaster {
     return this.#scenario;
   }
 
-  /** Narrate a turn's events, one batched call, falling back per event. */
-  async narrate(events: readonly GameEvent[]): Promise<NarrationLine[]> {
+  /**
+   * Narrate a turn's events to one player, one batched call, falling back per
+   * event. The view names the viewer, and events that viewer may not see are
+   * dropped before a prompt exists — passing the raw log is safe.
+   */
+  async narrate(view: PlayerView, events: readonly GameEvent[]): Promise<NarrationLine[]> {
     return narrateEvents(this.client, {
       scenario: this.#scenario ?? CANNED_SCENARIO,
+      viewer: view.you,
       events,
       ...(this.models.narration === undefined ? {} : { model: this.models.narration }),
     });
