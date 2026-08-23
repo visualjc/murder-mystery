@@ -21,6 +21,7 @@ import {
 } from '../../src/engine/actions.ts';
 import { corridorAt, inRoom, legalDestinations, positionKey } from '../../src/engine/board.ts';
 import { createGame } from '../../src/engine/setup.ts';
+import type { Card } from '../../src/engine/cards.ts';
 import { IllegalActionError, type GameState } from '../../src/engine/types.ts';
 import {
   FIXTURE_CASE_FILE,
@@ -260,7 +261,7 @@ describe('makeSuggestion', () => {
       makeSuggestion(inLibrary(), { suspect: 'Mrs. White', weapon: 'Dagger' }),
     );
     expect(outcome?.refuter).toBe('p2');
-    expect(['Dagger', 'Library']).toContain(outcome?.card as string);
+    expect(['Dagger', 'Library'] as Card[]).toContain(outcome?.card as Card);
   });
 
   test('the shown card is private to the suggester and the refuter', () => {
@@ -299,9 +300,9 @@ describe('makeSuggestion', () => {
   test('without a chooser the engine picks deterministically from the seed', () => {
     const first = makeSuggestion(inLibrary(), { suspect: 'Colonel Mustard', weapon: 'Dagger' });
     const second = makeSuggestion(inLibrary(), { suspect: 'Colonel Mustard', weapon: 'Dagger' });
-    expect(lastSuggestionOutcome(first)?.card).toBe(lastSuggestionOutcome(second)?.card as string);
-    expect(['Colonel Mustard', 'Dagger', 'Library']).toContain(
-      lastSuggestionOutcome(first)?.card as string,
+    expect(lastSuggestionOutcome(first)?.card).toBe(lastSuggestionOutcome(second)?.card as Card);
+    expect(['Colonel Mustard', 'Dagger', 'Library'] as Card[]).toContain(
+      lastSuggestionOutcome(first)?.card as Card,
     );
   });
 

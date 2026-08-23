@@ -11,6 +11,7 @@ import {
 } from '../../src/engine/view.ts';
 import { lastSuggestionOutcome, makeAccusation, makeSuggestion } from '../../src/engine/actions.ts';
 import { corridorAt, inRoom } from '../../src/engine/board.ts';
+import type { Card } from '../../src/engine/cards.ts';
 import { IllegalActionError } from '../../src/engine/types.ts';
 import { FIXTURE_CASE_FILE, arrangedGame, standingInRoom } from './helpers.ts';
 
@@ -190,15 +191,16 @@ describe('knownCards', () => {
   test('starts as exactly the player’s own hand', () => {
     const state = arrangedGame();
     const known = knownCards(state, 'p1');
-    expect([...known.keys()].sort()).toEqual((state.players[0]?.hand as string[]).slice().sort());
+    const ownHand = [...(state.players[0]?.hand ?? [])].sort();
+    expect([...known.keys()].sort()).toEqual(ownHand);
     expect([...known.values()].every((holder) => holder === 'p1')).toBe(true);
   });
 
   test('grows by the cards a player has been shown, attributed to the refuter', () => {
     const state = suggested();
-    const card = lastSuggestionOutcome(state)?.card as string;
-    expect(knownCards(state, 'p1').get(card as never)).toBe('p2');
-    expect(knownCards(state, 'p3').has(card as never)).toBe(false);
+    const card = lastSuggestionOutcome(state)?.card as Card;
+    expect(knownCards(state, 'p1').get(card)).toBe('p2');
+    expect(knownCards(state, 'p3').has(card)).toBe(false);
   });
 
   test('never attributes a card the player has not been shown', () => {

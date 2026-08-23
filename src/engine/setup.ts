@@ -18,9 +18,9 @@ import {
   type Suspect,
   type Weapon,
 } from './cards.ts';
-import { START_SQUARES, corridorAt } from './board.ts';
+import { START_SQUARES, corridorAt, type Position } from './board.ts';
 import { createRng, pick, shuffle, type RngState } from './rng.ts';
-import type { GameEvent, GameState, Player, PlayerId, Position } from './types.ts';
+import type { GameEvent, GameState, Player, PlayerId } from './types.ts';
 import { IllegalActionError } from './types.ts';
 
 export type NewPlayer = {

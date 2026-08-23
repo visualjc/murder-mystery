@@ -120,11 +120,12 @@ function playTurn(state: GameState): GameState {
     if (moves.length === 0) return endTurn(next);
     const { candidates } = knowledgeOf(next, me);
     const openRooms = new Set<string>(candidates.rooms);
+    const furthest = moves.reduce((best, move) => (move.steps > best.steps ? move : best));
     const preferred =
       moves.find((move) => move.position.kind === 'room' && openRooms.has(move.position.room)) ??
       moves.find((move) => move.position.kind === 'room') ??
-      moves.reduce((best, move) => (move.steps > best.steps ? move : best), moves[0]);
-    next = moveTo(next, (preferred ?? (moves[0] as (typeof moves)[number])).position);
+      furthest;
+    next = moveTo(next, preferred.position);
   }
 
   const room = roomOf(next, me);
