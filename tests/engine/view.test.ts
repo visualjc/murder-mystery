@@ -9,17 +9,30 @@ import {
   publicEvents,
   visibleEvents,
 } from '../../src/engine/view.ts';
-import { lastSuggestionOutcome, makeAccusation, makeSuggestion } from '../../src/engine/actions.ts';
+import {
+  lastSuggestionOutcome,
+  makeAccusation,
+  makeSuggestion,
+  provideRefutationCard,
+} from '../../src/engine/actions.ts';
 import { corridorAt, inRoom } from '../../src/engine/board.ts';
 import type { Card } from '../../src/engine/cards.ts';
 import { IllegalActionError } from '../../src/engine/types.ts';
 import { FIXTURE_CASE_FILE, arrangedGame, standingInRoom } from './helpers.ts';
 
+/**
+ * p1 suggests from the Library and p2 — who holds both Dagger and Library —
+ * shows the Dagger. The refutation is two actions because the choice belongs to
+ * the refuter, not to the engine.
+ */
 const suggested = () =>
-  makeSuggestion(standingInRoom(arrangedGame(), 'p1', 'Library'), {
-    suspect: 'Mrs. White',
-    weapon: 'Dagger',
-  });
+  provideRefutationCard(
+    makeSuggestion(standingInRoom(arrangedGame(), 'p1', 'Library'), {
+      suspect: 'Mrs. White',
+      weapon: 'Dagger',
+    }),
+    'Dagger',
+  );
 
 describe('visibleEvents and publicEvents', () => {
   test('the suggester and the refuter see the shown card; the third player does not', () => {
@@ -119,6 +132,31 @@ describe('playerView', () => {
     expect(playerView(state, 'p1').events.length).toBeGreaterThan(
       playerView(state, 'p3').events.length,
     );
+  });
+
+  test('a pending refutation names the chooser publicly but the cards privately', () => {
+    // p2 holds all three of Colonel Mustard, Dagger and Library, so the choice
+    // is theirs and the options are part of their hand.
+    const pending = makeSuggestion(standingInRoom(arrangedGame(), 'p1', 'Library'), {
+      suspect: 'Colonel Mustard',
+      weapon: 'Dagger',
+    });
+    expect(playerView(pending, 'p2').pendingRefutation).toEqual({
+      suggester: 'p1',
+      refuter: 'p2',
+      yours: true,
+      options: ['Colonel Mustard', 'Dagger', 'Library'],
+    });
+    for (const seat of ['p1', 'p3']) {
+      expect(playerView(pending, seat).pendingRefutation).toEqual({
+        suggester: 'p1',
+        refuter: 'p2',
+        yours: false,
+        options: null,
+      });
+      expect(JSON.stringify(playerView(pending, seat).pendingRefutation)).not.toContain('Dagger');
+    }
+    expect(playerView(suggested(), 'p1').pendingRefutation).toBeNull();
   });
 
   test('reports the winner once the game is over', () => {

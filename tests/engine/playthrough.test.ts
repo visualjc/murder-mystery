@@ -29,6 +29,7 @@ import {
   makeAccusation,
   makeSuggestion,
   moveTo,
+  provideRefutationCard,
   roomOf,
   rollDice,
 } from '../../src/engine/actions.ts';
@@ -104,6 +105,20 @@ function solvedTriple(state: GameState, playerId: PlayerId): SolutionTriple | nu
 }
 
 /**
+ * The refuter's policy when a suggestion leaves them a choice: show the first
+ * matching card in hand order. Determinism here comes from the policy plus the
+ * logged action, not from the engine sampling on the refuter's behalf — the
+ * engine has no opinion about which card is shown.
+ */
+function settleRefutation(state: GameState): GameState {
+  const pending = state.pendingRefutation;
+  if (pending === null) return state;
+  const choice = pending.options[0];
+  if (choice === undefined) throw new Error('a pending refutation must offer a card');
+  return provideRefutationCard(state, choice);
+}
+
+/**
  * One turn of a deterministic deduction bot. It reads only what its seat is
  * entitled to know, and every state change it makes goes through a real action.
  */
@@ -135,6 +150,7 @@ function playTurn(state: GameState): GameState {
   const suspect = (candidates.suspects[0] ?? SUSPECTS[0]) as Suspect;
   const weapon = (candidates.weapons[0] ?? WEAPONS[0]) as Weapon;
   next = makeSuggestion(next, { suspect, weapon });
+  next = settleRefutation(next);
 
   const outcome = lastSuggestionOutcome(next);
   const named: Card[] = [suspect, weapon, room];

@@ -31,11 +31,12 @@ import {
   type Destination,
   type Position,
 } from './board.ts';
-import { pick, rollDie } from './rng.ts';
+import { rollDie } from './rng.ts';
 import {
   IllegalActionError,
   type GameEvent,
   type GameState,
+  type PendingRefutation,
   type Player,
   type PlayerId,
   type SuggestionOutcome,
@@ -223,17 +224,23 @@ export function matchingCards(hand: readonly Card[], triple: SolutionTriple): Ca
   return hand.filter((card) => named.has(card));
 }
 
-export type SuggestionOptions = {
-  /**
-   * How a refuter picks which of several matching cards to show. Given the
-   * refuter and their options; must return one of them. Omitted, the engine
-   * chooses with the seeded RNG, which keeps replay exact.
-   */
-  readonly chooseRefutationCard?: (context: {
-    readonly refuter: PlayerId;
-    readonly options: readonly Card[];
-  }) => Card;
-};
+/** The two events a completed refutation appends, with their audiences. */
+function refutationEvents(
+  suggester: PlayerId,
+  refuter: PlayerId,
+  card: Card,
+): readonly GameEvent[] {
+  return [
+    { type: 'suggestion-refuted', visibleTo: 'all', player: suggester, refuter },
+    {
+      type: 'refutation-card-shown',
+      visibleTo: [suggester, refuter],
+      player: suggester,
+      refuter,
+      card,
+    },
+  ];
+}
 
 /**
  * Name a suspect and a weapon in the room the suggester occupies.
@@ -242,11 +249,19 @@ export type SuggestionOptions = {
  * first player holding any of the three named cards. That player shows exactly
  * one card privately; everyone else learns only that a card was shown, and by
  * whom. "Nobody could refute" is public.
+ *
+ * When the refuter holds exactly ONE matching card there is no choice to make
+ * and the refutation completes here. When they hold more than one, WHICH card
+ * they show is theirs to decide, so the game parks in `awaiting-refutation`
+ * with `pendingRefutation` naming the chooser and their options, and
+ * `provideRefutationCard` finishes it. The engine never picks for them: a
+ * sampled or callback-supplied choice would make the same state plus the same
+ * action produce different games, and would sit outside the action log a replay
+ * is reconstructed from.
  */
 export function makeSuggestion(
   state: GameState,
   suggestion: { readonly suspect: Suspect; readonly weapon: Weapon },
-  options: SuggestionOptions = {},
 ): GameState {
   const player = assertActive(state);
   if (!isSuspect(suggestion.suspect)) {
@@ -290,52 +305,62 @@ export function makeSuggestion(
     candidate.id === player.id ? { ...candidate, hasSuggestedThisTurn: true } : candidate,
   );
 
-  let rng = state.rng;
   let refuter: PlayerId | null = null;
-  let shown: Card | null = null;
+  let matches: readonly Card[] = [];
   for (const candidateId of refutationOrder(state, player.id)) {
-    const candidate = playerById(state, candidateId);
-    const matches = matchingCards(candidate.hand, triple);
-    if (matches.length === 0) continue;
+    const candidateMatches = matchingCards(playerById(state, candidateId).hand, triple);
+    if (candidateMatches.length === 0) continue;
     refuter = candidateId;
-    if (options.chooseRefutationCard) {
-      const chosen = options.chooseRefutationCard({ refuter: candidateId, options: matches });
-      if (!matches.includes(chosen)) {
-        throw new IllegalActionError(
-          `${candidateId} cannot show ${String(chosen)}: not among ${matches.join(', ')}`,
-        );
-      }
-      shown = chosen;
-    } else {
-      const [chosen, next] = pick(matches, rng);
-      rng = next;
-      shown = chosen;
-    }
+    matches = candidateMatches;
     break;
   }
 
-  if (refuter !== null && shown !== null) {
-    events.push({ type: 'suggestion-refuted', visibleTo: 'all', player: player.id, refuter });
-    events.push({
-      type: 'refutation-card-shown',
-      visibleTo: [player.id, refuter],
-      player: player.id,
-      refuter,
-      card: shown,
-    });
-  } else {
+  const settled = matches[0];
+  let pendingRefutation: PendingRefutation | null = null;
+  if (refuter === null) {
     events.push({ type: 'suggestion-unrefuted', visibleTo: 'all', player: player.id });
+  } else if (matches.length === 1 && settled !== undefined) {
+    events.push(...refutationEvents(player.id, refuter, settled));
+  } else {
+    pendingRefutation = { suggester: player.id, refuter, triple, options: matches };
   }
 
   return {
     ...state,
     players,
-    rng,
     suspectPositions: { ...state.suspectPositions, [triple.suspect]: { kind: 'room', room } },
     weaponPositions: { ...state.weaponPositions, [triple.weapon]: room },
-    phase: 'awaiting-action',
+    phase: pendingRefutation === null ? 'awaiting-action' : 'awaiting-refutation',
+    pendingRefutation,
     roll: null,
     events: append(state, ...events),
+  };
+}
+
+/**
+ * The refuter names which of their matching cards they show, completing a
+ * suggestion the engine deliberately left open. Legal only in
+ * `awaiting-refutation`, whose `pendingRefutation` is both the turn slot (only
+ * the named refuter owes this action) and the closed set of cards they may
+ * show. The card is shown to the suggester alone; everyone else learns only
+ * that a refutation happened, and by whom.
+ */
+export function provideRefutationCard(state: GameState, card: Card): GameState {
+  if (state.over) throw new IllegalActionError('the game is over');
+  const pending = state.pendingRefutation;
+  if (state.phase !== 'awaiting-refutation' || pending === null) {
+    throw new IllegalActionError(`no refutation is pending in phase ${state.phase}`);
+  }
+  if (!pending.options.includes(card)) {
+    throw new IllegalActionError(
+      `${pending.refuter} cannot show ${String(card)}: not among ${pending.options.join(', ')}`,
+    );
+  }
+  return {
+    ...state,
+    phase: 'awaiting-action',
+    pendingRefutation: null,
+    events: append(state, ...refutationEvents(pending.suggester, pending.refuter, card)),
   };
 }
 
@@ -375,6 +400,9 @@ export function lastSuggestionOutcome(state: GameState): SuggestionOutcome | nul
  */
 export function makeAccusation(state: GameState, accusation: SolutionTriple): GameState {
   const player = assertActive(state);
+  if (state.phase === 'awaiting-refutation') {
+    throw new IllegalActionError('the pending refutation must be shown before accusing');
+  }
   if (!isSuspect(accusation.suspect) || !isWeapon(accusation.weapon) || !isRoom(accusation.room)) {
     throw new IllegalActionError(`not a valid accusation: ${JSON.stringify(accusation)}`);
   }
@@ -436,6 +464,9 @@ export function makeAccusation(state: GameState, accusation: SolutionTriple): Ga
  */
 export function endTurn(state: GameState): GameState {
   if (state.over) throw new IllegalActionError('the game is over');
+  if (state.phase === 'awaiting-refutation') {
+    throw new IllegalActionError('the pending refutation must be shown before the turn can end');
+  }
   const player = currentPlayer(state);
   if (!player.eliminated) {
     if (state.phase === 'awaiting-move' && legalMoves(state).length > 0) {

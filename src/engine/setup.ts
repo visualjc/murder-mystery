@@ -184,6 +184,7 @@ export function createGame(options: NewGameOptions): GameState {
     currentPlayerIndex: 0,
     phase: 'awaiting-roll',
     roll: null,
+    pendingRefutation: null,
     caseFile,
     suspectPositions: startingSuspectPositions(),
     weaponPositions,

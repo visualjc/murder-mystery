@@ -57,6 +57,17 @@ export type PlayerView = {
   readonly suspectPositions: Readonly<Record<Suspect, Position>>;
   readonly weaponPositions: Readonly<Record<Weapon, Room>>;
   readonly events: readonly GameEvent[];
+  /**
+   * The refutation the game is waiting on, or null. Everyone may know WHO owes
+   * the choice — it is why play has stopped — but the cards on offer are part
+   * of the refuter's hand, so `options` is filled in for that player alone.
+   */
+  readonly pendingRefutation: {
+    readonly suggester: PlayerId;
+    readonly refuter: PlayerId;
+    readonly yours: boolean;
+    readonly options: readonly Card[] | null;
+  } | null;
 };
 
 /**
@@ -93,6 +104,16 @@ export function playerView(state: GameState, playerId: PlayerId): PlayerView {
     suspectPositions: state.suspectPositions,
     weaponPositions: state.weaponPositions,
     events: visibleEvents(state, playerId),
+    pendingRefutation:
+      state.pendingRefutation === null
+        ? null
+        : {
+            suggester: state.pendingRefutation.suggester,
+            refuter: state.pendingRefutation.refuter,
+            yours: state.pendingRefutation.refuter === playerId,
+            options:
+              state.pendingRefutation.refuter === playerId ? state.pendingRefutation.options : null,
+          },
   };
 }
 

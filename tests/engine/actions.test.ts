@@ -14,6 +14,7 @@ import {
   occupiedSquares,
   playerById,
   positionOf,
+  provideRefutationCard,
   refutationOrder,
   rollDice,
   roomOf,
@@ -257,53 +258,30 @@ describe('makeSuggestion', () => {
 
   test('the first clockwise holder refutes, not a later one', () => {
     // p2 holds Dagger and Library; p3 holds Mrs. White. p2 comes first.
-    const outcome = lastSuggestionOutcome(
-      makeSuggestion(inLibrary(), { suspect: 'Mrs. White', weapon: 'Dagger' }),
-    );
+    const suggested = makeSuggestion(inLibrary(), { suspect: 'Mrs. White', weapon: 'Dagger' });
+    expect(suggested.pendingRefutation?.refuter).toBe('p2');
+    const outcome = lastSuggestionOutcome(provideRefutationCard(suggested, 'Dagger'));
     expect(outcome?.refuter).toBe('p2');
-    expect(['Dagger', 'Library'] as Card[]).toContain(outcome?.card as Card);
+    expect(outcome?.card).toBe('Dagger');
   });
 
   test('the shown card is private to the suggester and the refuter', () => {
-    const suggested = makeSuggestion(inLibrary(), { suspect: 'Mrs. White', weapon: 'Dagger' });
+    const suggested = provideRefutationCard(
+      makeSuggestion(inLibrary(), { suspect: 'Mrs. White', weapon: 'Dagger' }),
+      'Dagger',
+    );
     const shown = suggested.events.find((event) => event.type === 'refutation-card-shown');
     expect(shown?.visibleTo).toEqual(['p1', 'p2']);
     const refuted = suggested.events.find((event) => event.type === 'suggestion-refuted');
     expect(refuted?.visibleTo).toBe('all');
   });
 
-  test('a refuter holding several matching cards may choose which to show', () => {
-    const suggested = makeSuggestion(
-      inLibrary(),
-      { suspect: 'Colonel Mustard', weapon: 'Dagger' },
-      {
-        chooseRefutationCard: ({ refuter, options }) => {
-          expect(refuter).toBe('p2');
-          expect(options.slice().sort()).toEqual(['Colonel Mustard', 'Dagger', 'Library']);
-          return 'Library';
-        },
-      },
-    );
-    expect(lastSuggestionOutcome(suggested)?.card).toBe('Library');
-  });
-
-  test('a refuter cannot show a card they were not offered', () => {
-    expect(() =>
-      makeSuggestion(
-        inLibrary(),
-        { suspect: 'Colonel Mustard', weapon: 'Dagger' },
-        { chooseRefutationCard: () => 'Rope' },
-      ),
-    ).toThrow(IllegalActionError);
-  });
-
-  test('without a chooser the engine picks deterministically from the seed', () => {
-    const first = makeSuggestion(inLibrary(), { suspect: 'Colonel Mustard', weapon: 'Dagger' });
-    const second = makeSuggestion(inLibrary(), { suspect: 'Colonel Mustard', weapon: 'Dagger' });
-    expect(lastSuggestionOutcome(first)?.card).toBe(lastSuggestionOutcome(second)?.card as Card);
-    expect(['Colonel Mustard', 'Dagger', 'Library'] as Card[]).toContain(
-      lastSuggestionOutcome(first)?.card as Card,
-    );
+  test('a lone matching card settles the refutation inside the same action', () => {
+    // p2's only card among {Mrs. Peacock, Candlestick, Library} is Library.
+    const suggested = makeSuggestion(inLibrary(), { suspect: 'Mrs. Peacock', weapon: 'Candlestick' });
+    expect(suggested.phase).toBe('awaiting-action');
+    expect(suggested.pendingRefutation).toBeNull();
+    expect(lastSuggestionOutcome(suggested)).toMatchObject({ refuter: 'p2', card: 'Library' });
   });
 
   test('"nobody could refute" is public and shows no card', () => {
@@ -327,13 +305,16 @@ describe('makeSuggestion', () => {
       ),
     };
     const state = standingInRoom(withEliminated, 'p1', 'Library');
-    expect(lastSuggestionOutcome(makeSuggestion(state, { suspect: 'Mrs. White', weapon: 'Dagger' }))?.refuter).toBe(
-      'p2',
-    );
+    const suggested = makeSuggestion(state, { suspect: 'Mrs. White', weapon: 'Dagger' });
+    expect(suggested.pendingRefutation?.refuter).toBe('p2');
+    expect(lastSuggestionOutcome(provideRefutationCard(suggested, 'Library'))?.refuter).toBe('p2');
   });
 
   test('pulling another player into the room lets them suggest there next turn', () => {
-    const suggested = makeSuggestion(inLibrary(), { suspect: 'Colonel Mustard', weapon: 'Rope' });
+    const suggested = provideRefutationCard(
+      makeSuggestion(inLibrary(), { suspect: 'Colonel Mustard', weapon: 'Rope' }),
+      'Library',
+    );
     expect(playerById(suggested, 'p2').movedBySuggestion).toBe(true);
     expect(positionOf(suggested, 'p2')).toEqual(inRoom('Library'));
 
@@ -377,6 +358,94 @@ describe('makeSuggestion', () => {
     expect(canSuggest(eliminated)).toBe(false);
     expect(() => makeSuggestion(eliminated, { suspect: 'Mrs. White', weapon: 'Rope' })).toThrow(
       IllegalActionError,
+    );
+  });
+});
+
+/**
+ * The refutation choice is an ACTION, not a callback. Before, `makeSuggestion`
+ * took a `chooseRefutationCard` callback and otherwise auto-picked with the
+ * seeded RNG; that made the same state plus the same action produce different
+ * outcomes depending on a function nobody could serialize, and put the choice
+ * outside the action log the replay depends on.
+ */
+describe('provideRefutationCard', () => {
+  const inLibrary = () => standingInRoom(arrangedGame(), 'p1', 'Library');
+  // p2 holds all three of Colonel Mustard, Dagger and Library.
+  const pending = () => makeSuggestion(inLibrary(), { suspect: 'Colonel Mustard', weapon: 'Dagger' });
+
+  test('several matching cards park the game in awaiting-refutation, naming who chooses among what', () => {
+    const state = pending();
+    expect(state.phase).toBe('awaiting-refutation');
+    expect(state.pendingRefutation).toEqual({
+      suggester: 'p1',
+      refuter: 'p2',
+      triple: { suspect: 'Colonel Mustard', weapon: 'Dagger', room: 'Library' },
+      options: ['Colonel Mustard', 'Dagger', 'Library'],
+    });
+    // Nothing is claimed about the refutation until the refuter has acted.
+    expect(eventTypes(state)).not.toContain('suggestion-refuted');
+    expect(eventTypes(state)).not.toContain('refutation-card-shown');
+    expect(lastSuggestionOutcome(state)).toMatchObject({ refuter: null, card: null });
+  });
+
+  test('completes the refutation and returns the turn to awaiting-action', () => {
+    const done = provideRefutationCard(pending(), 'Library');
+    expect(done.phase).toBe('awaiting-action');
+    expect(done.pendingRefutation).toBeNull();
+    expect(lastSuggestionOutcome(done)).toMatchObject({ refuter: 'p2', card: 'Library' });
+    expect(eventTypes(done).slice(-2)).toEqual(['suggestion-refuted', 'refutation-card-shown']);
+  });
+
+  test('keeps the visibility scoping: the card is private, the fact of it is public', () => {
+    const done = provideRefutationCard(pending(), 'Colonel Mustard');
+    const shown = done.events.find((event) => event.type === 'refutation-card-shown');
+    expect(shown).toMatchObject({ player: 'p1', refuter: 'p2', card: 'Colonel Mustard' });
+    expect(shown?.visibleTo).toEqual(['p1', 'p2']);
+    expect(done.events.find((event) => event.type === 'suggestion-refuted')?.visibleTo).toBe('all');
+  });
+
+  test('the refuter may show any of their matching cards, and only those', () => {
+    for (const card of ['Colonel Mustard', 'Dagger', 'Library'] as Card[]) {
+      expect(lastSuggestionOutcome(provideRefutationCard(pending(), card))?.card).toBe(card);
+    }
+    // Rope is a real card, but not one p2 holds among the three named.
+    expect(() => provideRefutationCard(pending(), 'Rope')).toThrow(IllegalActionError);
+    // Billiard Room is p2's, but was not named in the suggestion.
+    expect(() => provideRefutationCard(pending(), 'Billiard Room')).toThrow(IllegalActionError);
+  });
+
+  test('is illegal when no refutation is pending', () => {
+    expect(() => provideRefutationCard(inLibrary(), 'Library')).toThrow(IllegalActionError);
+    expect(() => provideRefutationCard(arrangedGame(), 'Library')).toThrow(IllegalActionError);
+    const settled = provideRefutationCard(pending(), 'Library');
+    expect(() => provideRefutationCard(settled, 'Dagger')).toThrow(IllegalActionError);
+  });
+
+  test('the rest of the turn is blocked until the refuter has chosen', () => {
+    const state = pending();
+    expect(() => endTurn(state)).toThrow(IllegalActionError);
+    expect(() => makeAccusation(state, FIXTURE_CASE_FILE)).toThrow(IllegalActionError);
+    expect(() => rollDice(state)).toThrow(IllegalActionError);
+    expect(() => makeSuggestion(state, { suspect: 'Mrs. White', weapon: 'Rope' })).toThrow(
+      IllegalActionError,
+    );
+    expect(canSuggest(state)).toBe(false);
+    expect(canTakeSecretPassage(state)).toBe(false);
+  });
+
+  test('the choice never touches the RNG — determinism comes from the action log', () => {
+    const before = inLibrary();
+    const suggested = pending();
+    expect(suggested.rng).toEqual(before.rng);
+    expect(provideRefutationCard(suggested, 'Dagger').rng).toEqual(before.rng);
+    // Same state, same action, same outcome — and a different card is only
+    // reachable by logging a different action.
+    expect(provideRefutationCard(pending(), 'Dagger')).toEqual(
+      provideRefutationCard(pending(), 'Dagger'),
+    );
+    expect(lastSuggestionOutcome(provideRefutationCard(pending(), 'Dagger'))?.card).not.toBe(
+      lastSuggestionOutcome(provideRefutationCard(pending(), 'Library'))?.card,
     );
   });
 });
@@ -441,7 +510,8 @@ describe('makeAccusation', () => {
       suspect: 'Miss Scarlett',
       weapon: 'Candlestick',
     });
-    expect(lastSuggestionOutcome(suggestion)?.refuter).toBe('p1');
+    expect(suggestion.pendingRefutation?.refuter).toBe('p1');
+    expect(lastSuggestionOutcome(provideRefutationCard(suggestion, 'Ballroom'))?.refuter).toBe('p1');
   });
 
   test('an eliminated player cannot accuse again', () => {

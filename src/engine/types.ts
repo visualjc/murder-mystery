@@ -30,9 +30,29 @@ export type TurnPhase =
   | 'awaiting-roll'
   /** A die has been rolled and the token must be moved. */
   | 'awaiting-move'
+  /**
+   * A suggestion found a refuter holding more than one matching card. The turn
+   * is suspended until that refuter names which card they show.
+   */
+  | 'awaiting-refutation'
   /** Movement is settled: suggest (in a room), accuse, or end the turn. */
   | 'awaiting-action'
   | 'game-over';
+
+/**
+ * A refutation the engine cannot settle on its own: the refuter holds several
+ * cards that answer the suggestion, and which one they show is their choice.
+ * Recorded in state so the choice arrives as its own action (a value in the
+ * action log) rather than as a callback the engine calls mid-suggestion.
+ */
+export type PendingRefutation = {
+  readonly suggester: PlayerId;
+  readonly refuter: PlayerId;
+  /** The suspect, weapon and room the suggester named. */
+  readonly triple: SolutionTriple;
+  /** The refuter's matching cards, in hand order. Exactly one may be shown. */
+  readonly options: readonly Card[];
+};
 
 /** Who may see an event. `'all'` is public knowledge; a list is private. */
 export type Visibility = 'all' | readonly PlayerId[];
@@ -60,6 +80,8 @@ export type GameState = {
   readonly phase: TurnPhase;
   /** The die value awaiting spend, or null outside `awaiting-move`. */
   readonly roll: number | null;
+  /** The refutation choice owed by a refuter, or null outside `awaiting-refutation`. */
+  readonly pendingRefutation: PendingRefutation | null;
   /**
    * The hidden answer. Engine-only: never render it, never put it in a prompt.
    * Use `playerView` to hand state to a UI or an LLM.
