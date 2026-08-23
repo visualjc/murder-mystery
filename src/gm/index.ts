@@ -29,6 +29,7 @@ export {
   type ScenarioOptions,
 } from './scenario.ts';
 export {
+  CRITICAL_EVENTS,
   fallbackNarration,
   narrateEvents,
   narrationMessages,

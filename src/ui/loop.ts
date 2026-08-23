@@ -38,9 +38,10 @@ import {
 } from '../engine/actions.ts';
 import { createGame } from '../engine/setup.ts';
 import { IllegalActionError, type GameState } from '../engine/types.ts';
-import { isVisibleTo, playerView, type PlayerView } from '../engine/view.ts';
+import { describeEvent, isVisibleTo, playerView, type PlayerView } from '../engine/view.ts';
 import {
   CANNED_SCENARIO,
+  CRITICAL_EVENTS,
   GameMaster,
   buildNotebook,
   fallbackNarration,
@@ -246,7 +247,18 @@ export async function runGame(options: LoopOptions, deps: LoopDeps): Promise<num
       llmNoticed = true;
       io.write(FALLBACK_NOTICE);
     }
-    for (const line of lines) io.write(`  ${line.text}`);
+    for (const line of lines) {
+      // The engine's own sentence for a critical event is a trusted channel and
+      // always reaches the player (ADR-0001): a narrator that left a refutation
+      // out, or described one that did not happen, would otherwise be the only
+      // account the player had of a fact they must deduce from. The model still
+      // gets its line — it colours the moment, it does not replace it.
+      const authoritative = describeEvent(line.event);
+      if (line.source === 'llm' && CRITICAL_EVENTS.has(line.event.type) && line.text !== authoritative) {
+        io.write(`  ${authoritative}`);
+      }
+      io.write(`  ${line.text}`);
+    }
   }
 
   function cardOptions<T extends Card>(cards: readonly T[]): Option<T | null>[] {

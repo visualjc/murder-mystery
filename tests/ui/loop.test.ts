@@ -388,6 +388,72 @@ describe('with a game master', () => {
     }
   }, 30_000);
 
+  /**
+   * Panel finding (codex): a successful narration REPLACED the engine's own
+   * sentence, so a model that omitted a refutation, or described one that did
+   * not happen, was the only account the player got of a fact the rules turn
+   * on. ADR-0001 says the model describes and never decides — which cannot hold
+   * if the description is the player's only channel to what was decided.
+   *
+   * The vendor here narrates every beat with the same piece of scenery: it
+   * mentions no refutation, and it contradicts the log by insisting nothing was
+   * shown. The authoritative lines must be on the screen anyway.
+   */
+  test('narration that omits and contradicts a refutation cannot hide it', async () => {
+    const FLAVOUR = 'The gramophone plays on, and nobody shows anybody anything.';
+    const vendor = startFakeVendor((request) => {
+      const body = request.body as { messages: { content: string }[] };
+      const prompt = body.messages.map((message) => message.content).join('\n');
+      if (prompt.includes('Return exactly this JSON shape')) {
+        return completionResponse({
+          content: JSON.stringify({ victim: 'Lord Edgemere', setting: 'A rain-locked manor' }),
+          model: 'Test-Model',
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        });
+      }
+      const count = (prompt.match(/^\d+\. /gm) ?? []).length;
+      return completionResponse({
+        content: JSON.stringify(Array.from({ length: count }, () => FLAVOUR)),
+        model: 'Test-Model',
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      });
+    });
+
+    try {
+      const session = drivenSession(plainPlayer());
+      const client = clientFor(vendor.baseUrl);
+      const code = await runGame(
+        { seed: 2, players: 3, useLlm: true },
+        { io: session.io, createClient: () => client },
+      );
+      const text = session.text();
+      const lines = session.lines;
+
+      expect(code).toBe(0);
+      // The model really was the narrator: this is its voice, all game.
+      expect(lines.filter((line) => line.includes(FLAVOUR)).length).toBeGreaterThan(5);
+      expect(text).not.toContain('the game master is not answering');
+
+      // A refutation happened, and the ENGINE said so — in its own words, on a
+      // line of its own, next to the model's contradiction of it.
+      const refutations = lines.filter((line) =>
+        /refutes .*'s suggestion with a card shown in private\./.test(line),
+      );
+      console.log('[authoritative] refutation lines ->', refutations.slice(0, 3));
+      expect(refutations.length).toBeGreaterThan(0);
+      // And so was the card the player was shown, and the game's own ending.
+      expect(text).toMatch(/ {2}p\d shows you the /);
+      expect(text).toMatch(/ {2}(p\d wins: |The game ends unsolved\.)/);
+
+      // Flavour events are still told in the model's words alone: the engine's
+      // sentence for a roll or a move is nowhere on the screen.
+      expect(text).not.toMatch(/ {2}p\d rolls a \d\./);
+      expect(text).not.toMatch(/ {2}p\d moves \d+ steps? from /);
+    } finally {
+      await vendor.stop();
+    }
+  }, 60_000);
+
   test('a client that cannot even be built is a notice, not a crash', async () => {
     const session = drivenSession(scriptedDriver(['quit']));
     const code = await runGame(

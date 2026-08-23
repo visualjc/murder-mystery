@@ -13,7 +13,7 @@ import { createGame } from '../../src/engine/setup.ts';
 import { describeEvent, visibleEvents } from '../../src/engine/view.ts';
 import type { GameEvent, GameState } from '../../src/engine/types.ts';
 import { CANNED_SCENARIO } from '../../src/gm/scenario.ts';
-import { narrateEvents } from '../../src/gm/narrator.ts';
+import { CRITICAL_EVENTS, narrateEvents } from '../../src/gm/narrator.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
 import { arrangedGame, standingInRoom } from '../engine/helpers.ts';
 import { clientFor, promptTextOf } from './support.ts';
@@ -229,6 +229,43 @@ describe('the narrator filters for its viewer', () => {
       expect(client.usage.calls).toBe(0);
     } finally {
       await vendor.stop();
+    }
+  });
+});
+
+/**
+ * The set the loop consults before it lets narration stand alone. It is pinned
+ * here because shrinking it is exactly how the panel's finding (codex) would
+ * come back: an event quietly dropped from this list becomes an event the
+ * player only ever hears about from the model.
+ */
+describe('CRITICAL_EVENTS', () => {
+  test('names every moment a player deduces from, and nothing that is only scenery', () => {
+    console.log('[critical events] ->', [...CRITICAL_EVENTS].sort());
+    expect([...CRITICAL_EVENTS].sort()).toEqual([
+      'accusation-made',
+      'game-over',
+      'player-eliminated',
+      'refutation-card-shown',
+      'suggestion-refuted',
+      'suggestion-unrefuted',
+    ]);
+    for (const scenery of ['rolled', 'moved', 'secret-passage', 'token-relocated', 'turn-started'] as const) {
+      expect(CRITICAL_EVENTS.has(scenery)).toBe(false);
+    }
+  });
+
+  test('the engine has a real sentence for the ones a game produces', () => {
+    // The loop prints `describeEvent(event)` for these. A type the engine had
+    // no wording for would reach the player as an empty line.
+    const state = refutationBetweenOthers();
+    const seen = state.events.filter((event) => CRITICAL_EVENTS.has(event.type));
+    expect(seen.length).toBeGreaterThan(0);
+    for (const event of seen) {
+      const sentence = describeEvent(event);
+      console.log(`[critical events] ${event.type} -> ${sentence}`);
+      expect(sentence.length).toBeGreaterThan(0);
+      expect(sentence).toContain(' ');
     }
   });
 });

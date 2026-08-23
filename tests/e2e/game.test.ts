@@ -297,13 +297,26 @@ describe('a whole game played through the game master', () => {
       expect(client.usage.failures).toBe(1);
       expect(client.usage.total_tokens).toBe(totals.total);
 
-      // 8. The screen never spilled what only the engine knew: the case file is
-      //    named once, in the reveal, after the game is over.
-      const revealAt = lines.findIndex((line) => line.startsWith('The answer: '));
-      const before = lines.slice(0, revealAt).join('\n');
+      // 8. The screen never spilled what only the engine knew: nothing names
+      //    the case file until the player names it themselves.
+      //
+      //    This used to measure "before the reveal line". It cannot any more,
+      //    and the reason is the fix for the panel's own finding: the engine's
+      //    sentences for `accusation-made` and `game-over` are authoritative
+      //    and always print, so the triple is on the screen from the moment the
+      //    player's accusation resolves — as it already was in every offline
+      //    game. The guarantee worth pinning was never "after the reveal
+      //    header"; it is that the game does not hand the player the answer
+      //    before they have worked it out.
+      const accusedAt = lines.findIndex((line) => line.includes('An accusation is final'));
+      expect(accusedAt).toBeGreaterThan(-1);
+      const before = lines.slice(0, accusedAt).join('\n');
       expect(before).not.toContain(
         `${caseFile.suspect} in the ${caseFile.room} with the ${caseFile.weapon}`,
       );
+      // And the reveal header still comes after the case is closed, once.
+      const revealAt = lines.findIndex((line) => line.startsWith('The answer: '));
+      expect(revealAt).toBeGreaterThan(lines.indexOf('── Case closed ──'));
       expect(HUMAN_SEAT).toBe('p1');
     } finally {
       await vendor.stop();

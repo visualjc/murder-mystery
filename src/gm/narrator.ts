@@ -30,6 +30,31 @@ export type NarrationLine = {
 
 const MAX_LINE_LENGTH = 400;
 
+/**
+ * The events whose engine sentence is ALWAYS printed, whatever the model says.
+ *
+ * ADR-0001 draws the line at legality: the model describes, it never decides.
+ * That guarantee is worth nothing if the description is the player's only
+ * account of what was decided — a narrator that omits a refutation, or invents
+ * one, changes what the player believes the rules produced, and deduction is
+ * the entire game. These are the moments a player reasons FROM: whether a
+ * suggestion was answered, which card answered it, who accused, who is out, and
+ * how it ended.
+ *
+ * Everything else — rolls, moves, secret passages, tokens sliding across the
+ * board — is scenery, and the model's voice replaces the engine's freely. On a
+ * critical event the model still speaks; it simply speaks ALONGSIDE the engine
+ * rather than instead of it.
+ */
+export const CRITICAL_EVENTS: ReadonlySet<GameEvent['type']> = new Set([
+  'suggestion-refuted',
+  'suggestion-unrefuted',
+  'refutation-card-shown',
+  'accusation-made',
+  'player-eliminated',
+  'game-over',
+] satisfies GameEvent['type'][]);
+
 /** The engine's own account of each event — the fallback, verbatim. */
 export function fallbackNarration(events: readonly GameEvent[]): NarrationLine[] {
   return events.map((event) => ({ event, text: describeEvent(event), source: 'fallback' as const }));
