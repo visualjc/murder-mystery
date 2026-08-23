@@ -1,0 +1,123 @@
+/**
+ * The narrator: engine events in, prose out.
+ *
+ * One batched call per turn — a call per event would be slow, expensive, and
+ * would lose the thread of what just happened. The engine's own
+ * `describeEvent` sentence for each event is what goes INTO the prompt, so the
+ * model is rephrasing a fact rather than inventing one, and it is also what
+ * comes back out on any failure: narration is discardable by construction
+ * (CONTEXT.md "Narration", ADR-0001).
+ *
+ * The caller decides whose events these are — pass `visibleEvents(state, id)`
+ * for a player, `publicEvents(state)` for the table. Nothing here filters
+ * visibility, because nothing here knows who is reading.
+ */
+
+import type { GameEvent } from '../engine/types.ts';
+import { describeEvent } from '../engine/view.ts';
+import type { ChatClient, ChatMessage } from '../llm/index.ts';
+import type { Scenario } from './scenario.ts';
+
+export type NarrationLine = {
+  readonly event: GameEvent;
+  readonly text: string;
+  readonly source: 'llm' | 'fallback';
+};
+
+const MAX_LINE_LENGTH = 400;
+
+/** The engine's own account of each event — the fallback, verbatim. */
+export function fallbackNarration(events: readonly GameEvent[]): NarrationLine[] {
+  return events.map((event) => ({ event, text: describeEvent(event), source: 'fallback' as const }));
+}
+
+export function narrationMessages(
+  scenario: Scenario,
+  events: readonly GameEvent[],
+): ChatMessage[] {
+  return [
+    {
+      role: 'system',
+      content: [
+        'You are the narrator of a parlour-murder mystery. You are told what happened and you say it well.',
+        'Rules you may not break:',
+        '- Never add an event, a clue, or a deduction that is not in the list you are given.',
+        '- Never say who the murderer is, or what the murder weapon or room was. You do not know.',
+        '- One sentence per numbered line, in the same order.',
+        `Reply with a JSON array of ${events.length} strings and nothing else.`,
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: [
+        `Setting: ${scenario.setting}`,
+        `The victim: ${scenario.victim}`,
+        '',
+        'What just happened, in order:',
+        ...events.map((event, index) => `${index + 1}. ${describeEvent(event)}`),
+      ].join('\n'),
+    },
+  ];
+}
+
+function unfence(text: string): string {
+  const fenced = /^\s*```(?:json)?\s*\n([\s\S]*?)\n?\s*```\s*$/.exec(text);
+  return fenced?.[1] ?? text;
+}
+
+/**
+ * Read up to `count` narration strings from a model reply.
+ *
+ * Returns one slot per event: a string where the model supplied a usable one,
+ * null where it did not. A reply that is not a JSON array yields all nulls, so
+ * the batch falls back wholesale.
+ */
+export function parseNarration(text: string, count: number): (string | null)[] {
+  const slots: (string | null)[] = Array.from({ length: count }, () => null);
+  let payload: unknown;
+  try {
+    payload = JSON.parse(unfence(text));
+  } catch {
+    return slots;
+  }
+  if (!Array.isArray(payload)) return slots;
+
+  for (let index = 0; index < count; index += 1) {
+    const entry = payload[index];
+    if (typeof entry !== 'string') continue;
+    const line = entry.replace(/\s+/g, ' ').trim();
+    if (line.length === 0) continue;
+    slots[index] = line.length > MAX_LINE_LENGTH ? `${line.slice(0, MAX_LINE_LENGTH)}…` : line;
+  }
+  return slots;
+}
+
+export type NarrationRequest = {
+  readonly scenario: Scenario;
+  readonly events: readonly GameEvent[];
+  /** Model for this call only; defaults to the client's configured model. */
+  readonly model?: string;
+};
+
+/** Narrate a turn's events, falling back to the engine's own sentences per event. */
+export async function narrateEvents(
+  client: ChatClient,
+  request: NarrationRequest,
+): Promise<NarrationLine[]> {
+  const { events } = request;
+  if (events.length === 0) return [];
+
+  const reply = await client.tryChat(narrationMessages(request.scenario, events), {
+    ...(request.model === undefined ? {} : { model: request.model }),
+    params: { temperature: 0.8 },
+  });
+  if (!reply.ok) return fallbackNarration(events);
+
+  const slots = parseNarration(reply.value.text, events.length);
+  return events.map((event, index) => {
+    const line = slots[index];
+    return line === null || line === undefined
+      ? { event, text: describeEvent(event), source: 'fallback' as const }
+      : { event, text: line, source: 'llm' as const };
+  });
+}
