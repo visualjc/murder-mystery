@@ -27,6 +27,7 @@ import { join, resolve } from 'node:path';
 
 import { createGame } from '../../src/engine/setup.ts';
 import { SUSPECTS } from '../../src/engine/cards.ts';
+import { ENV_FILE_ENV } from '../../src/llm/config.ts';
 import { HUMAN_SEAT, runGame } from '../../src/ui/loop.ts';
 import { clientFor } from '../gm/support.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
@@ -326,11 +327,12 @@ type ProcessRun = { code: number; stdout: string; stderr: string };
 /**
  * One real `bun run src/cli.ts` game, from a directory that is NOT the repo.
  *
- * The cwd matters: `loadLlmConfig` reads `.env.local` from the working
- * directory, so a child started in the repo would find the maintainer's real
- * key and a test could bill a live endpoint. A fresh mkdtemp has no such file,
- * and the emptied `POE_API_KEY` closes the environment door as well — belt and
- * braces around a hazard that is cheap to prevent and expensive to discover.
+ * `--no-llm` is the guarantee that matters: the loop builds no client at all,
+ * so nothing here can reach an endpoint even with a key to hand. The other two
+ * doors are shut anyway — `POE_API_KEY` is emptied, and `POE_ENV_FILE` points
+ * at a file that does not exist, which is now the only way to be keyless (the
+ * dotenv file is resolved against the PACKAGE ROOT, not the cwd — panel
+ * finding, codex — so a foreign cwd no longer hides the maintainer's key).
  */
 async function playOffline(seed: number): Promise<ProcessRun> {
   const dir = mkdtempSync(join(tmpdir(), 'mm-e2e-'));
@@ -342,7 +344,11 @@ async function playOffline(seed: number): Promise<ProcessRun> {
     stdin: Bun.file(script),
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, POE_API_KEY: '' },
+    env: {
+      ...process.env,
+      POE_API_KEY: '',
+      [ENV_FILE_ENV]: resolve(import.meta.dir, 'no-such-file.env.local'),
+    },
   });
   const [stdout, stderr, code] = await Promise.all([
     new Response(child.stdout).text(),

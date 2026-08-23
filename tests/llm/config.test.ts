@@ -1,19 +1,23 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
   API_KEY_ENV,
   DEFAULT_BASE_URL,
+  DEFAULT_ENV_FILE_PATH,
   DEFAULT_MODEL,
   DEFAULT_RETRY_BACKOFF_MS,
   DEFAULT_TIMEOUT_MS,
+  ENV_FILE_ENV,
   ENV_FILE_NAME,
   loadLlmConfig,
   readEnvFile,
 } from "../../src/llm/config.ts";
 import { LlmConfigError } from "../../src/llm/errors.ts";
+
+const REPO_ROOT = resolve(import.meta.dir, "../..");
 
 const scratch = mkdtempSync(join(tmpdir(), "mmt-llm-config-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -165,5 +169,123 @@ describe("loadLlmConfig", () => {
     expect(() =>
       loadLlmConfig({ env: { POE_API_KEY: "   " }, envFilePath: join(scratch, "absent.env") }),
     ).toThrow(LlmConfigError);
+  });
+
+  test("the missing-key error names the path it actually looked in", () => {
+    const path = join(scratch, "named-in-the-error.env");
+    let thrown: unknown;
+    try {
+      loadLlmConfig({ env: {}, envFilePath: path });
+    } catch (error) {
+      thrown = error;
+    }
+    console.log("[loadLlmConfig] path-naming error ->", (thrown as Error)?.message);
+    expect((thrown as Error).message).toContain(path);
+  });
+});
+
+/**
+ * Panel finding (codex): the dotenv fallback was resolved against
+ * `process.cwd()`, so launching the game from any other directory silently read
+ * THAT directory's `.env.local` — someone else's key, or a planted one — and
+ * sent the session's traffic wherever its POE_BASE_URL pointed. The file
+ * belongs to the installation, not to whatever directory the shell happened to
+ * be in, so it is resolved against the package root.
+ */
+describe("the default dotenv path", () => {
+  test("is the package root's .env.local, wherever the process was started", () => {
+    console.log("[config] default env file ->", DEFAULT_ENV_FILE_PATH);
+    expect(DEFAULT_ENV_FILE_PATH).toBe(resolve(REPO_ROOT, ENV_FILE_NAME));
+    expect(existsSync(resolve(REPO_ROOT, "package.json"))).toBe(true);
+  });
+
+  test("a config load from a foreign cwd ignores that directory's .env.local", async () => {
+    const foreign = mkdtempSync(join(tmpdir(), "mmt-foreign-cwd-"));
+    const decoy = "decoy-key-that-must-never-be-read";
+    writeFileSync(
+      join(foreign, ENV_FILE_NAME),
+      [`${API_KEY_ENV}=${decoy}`, "POE_BASE_URL=https://decoy.example/v1"].join("\n"),
+      "utf8",
+    );
+
+    // A real child process, started IN the foreign directory: nothing about the
+    // parent's cwd can mask the bug. The child reports booleans only — the
+    // repository's own key is never printed, logged, or passed through env.
+    const probe = join(foreign, "probe.ts");
+    writeFileSync(
+      probe,
+      [
+        `import { loadLlmConfig, readEnvFile, DEFAULT_ENV_FILE_PATH } from ${JSON.stringify(
+          resolve(REPO_ROOT, "src/llm/config.ts"),
+        )};`,
+        `const repo = readEnvFile(DEFAULT_ENV_FILE_PATH);`,
+        `const config = loadLlmConfig({ env: {} });`,
+        `console.log(JSON.stringify({`,
+        `  cwd: process.cwd(),`,
+        `  defaultPath: DEFAULT_ENV_FILE_PATH,`,
+        `  readTheDecoy: config.apiKey === ${JSON.stringify(decoy)},`,
+        `  baseUrl: config.baseUrl,`,
+        `  repoFileHasKey: typeof repo[${JSON.stringify(API_KEY_ENV)}] === "string",`,
+        `  readTheRepoFile: config.apiKey === repo[${JSON.stringify(API_KEY_ENV)}],`,
+        `}));`,
+      ].join("\n"),
+      "utf8",
+    );
+
+    const child = Bun.spawn(["bun", "run", probe], {
+      cwd: foreign,
+      stdout: "pipe",
+      stderr: "pipe",
+      // The environment door is shut, so the only key on offer is a FILE's.
+      env: { ...process.env, [API_KEY_ENV]: "", POE_BASE_URL: "", [ENV_FILE_ENV]: "" },
+    });
+    const [stdout, stderr] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    await child.exited;
+    console.log("[foreign cwd] stdout ->", stdout.trim(), "stderr ->", stderr.trim());
+
+    const report = JSON.parse(stdout.trim()) as {
+      cwd: string;
+      defaultPath: string;
+      readTheDecoy: boolean;
+      baseUrl: string;
+      repoFileHasKey: boolean;
+      readTheRepoFile: boolean;
+    };
+
+    // realpath: macOS hands out /var/... temp dirs that resolve to /private/var/...
+    expect(report.cwd).toBe(realpathSync(foreign));
+    expect(report.defaultPath).toBe(resolve(REPO_ROOT, ENV_FILE_NAME));
+    expect(report.readTheDecoy).toBe(false);
+    // The decoy's base URL is where a stolen session would have gone.
+    expect(report.baseUrl).not.toBe("https://decoy.example/v1");
+    expect(report.baseUrl).toBe(DEFAULT_BASE_URL);
+    // The installation's own file IS the one that was read — asserted only when
+    // there is one, since `.env.local` is gitignored and a clean checkout has none.
+    if (report.repoFileHasKey) expect(report.readTheRepoFile).toBe(true);
+
+    rmSync(foreign, { recursive: true, force: true });
+  }, 30_000);
+
+  test(`${ENV_FILE_ENV} points the loader somewhere else, for a test or a second key file`, () => {
+    const path = writeEnvFile("override.env", `${API_KEY_ENV}=key-from-the-override`);
+    const config = loadLlmConfig({ env: { [ENV_FILE_ENV]: path } });
+    console.log("[loadLlmConfig] override path ->", path);
+    expect(config.apiKey).toBe("key-from-the-override");
+
+    // And an override naming a file that does not exist means no file key at
+    // all — the door a keyless test needs, whatever the package root holds.
+    expect(() =>
+      loadLlmConfig({ env: { [ENV_FILE_ENV]: join(scratch, "no-such.env") } }),
+    ).toThrow(LlmConfigError);
+  });
+
+  test("an explicit envFilePath option still wins over the variable", () => {
+    const explicit = writeEnvFile("explicit.env", `${API_KEY_ENV}=key-from-the-option`);
+    const ignored = writeEnvFile("ignored.env", `${API_KEY_ENV}=key-from-the-variable`);
+    const config = loadLlmConfig({ env: { [ENV_FILE_ENV]: ignored }, envFilePath: explicit });
+    expect(config.apiKey).toBe("key-from-the-option");
   });
 });

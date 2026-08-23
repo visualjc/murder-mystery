@@ -12,7 +12,20 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { ENV_FILE_ENV } from '../../src/llm/config.ts';
+
 const CLI = resolve(import.meta.dir, '../../src/cli.ts');
+
+/**
+ * A dotenv path that does not exist, so a spawned game finds no key in a file.
+ *
+ * `.env.local` is resolved against the PACKAGE ROOT, not the cwd (panel
+ * finding, codex), which is what stops a game launched elsewhere from reading a
+ * stranger's key — and it also means a keyless child can no longer be arranged
+ * by starting it in an empty directory. The variable is the explicit door: this
+ * suite must never reach the maintainer's real key or a live endpoint.
+ */
+const NO_ENV_FILE = resolve(import.meta.dir, 'no-such-file.env.local');
 
 async function run(
   args: readonly string[],
@@ -24,10 +37,9 @@ async function run(
     stdout: 'pipe',
     stderr: 'pipe',
     ...(cwd === undefined ? {} : { cwd }),
-    // No key in the environment. `loadLlmConfig` also reads .env.local from the
-    // CWD, so a test that must be keyless runs from somewhere without one —
-    // otherwise the maintainer's real key would send this suite to the vendor.
-    env: { ...process.env, POE_API_KEY: '' },
+    // No key in the environment, and no key file either: both doors shut, so
+    // this suite cannot reach the maintainer's real key or a live endpoint.
+    env: { ...process.env, POE_API_KEY: '', [ENV_FILE_ENV]: NO_ENV_FILE },
   });
   const [stdout, stderr, code] = await Promise.all([
     new Response(child.stdout).text(),
@@ -86,7 +98,8 @@ describe('bun run src/cli.ts', () => {
 
   test('without a key the game still starts, offline, saying so once', async () => {
     // No --no-llm: the client cannot be built, and that is a notice, not a
-    // crash. Run from a directory with no .env.local so no key can be found.
+    // crash. `run` points the loader at a file that does not exist, so no key
+    // is found however the process was started or wherever it was started from.
     const { code, stdout } = await run(['--seed', '3'], 'quit\n', mkdtempSync(join(tmpdir(), 'mm-cli-')));
     expect(code).toBe(0);
     expect(stdout).toContain('(no game master: Missing POE_API_KEY');

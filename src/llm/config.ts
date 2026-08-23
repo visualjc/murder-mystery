@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 import { LlmConfigError } from "./errors.ts";
 
@@ -27,6 +27,36 @@ export const DEFAULT_RETRY_BACKOFF_MS = 500;
 export const BASE_URL_ENV = "POE_BASE_URL";
 export const MODEL_ENV = "POE_MODEL";
 
+/** Overrides which dotenv file is read. Empty or unset means the default below. */
+export const ENV_FILE_ENV = "POE_ENV_FILE";
+
+/**
+ * The directory this package lives in: the nearest ancestor of this module that
+ * holds a `package.json`. Falls back to the module's own directory if there is
+ * none, which cannot happen in a checkout but must not throw if it does.
+ */
+function packageRoot(): string {
+  let directory = import.meta.dir;
+  for (;;) {
+    if (existsSync(join(directory, "package.json"))) return directory;
+    const parent = dirname(directory);
+    if (parent === directory) return import.meta.dir;
+    directory = parent;
+  }
+}
+
+/**
+ * The dotenv file read when nothing overrides it: the INSTALLATION's own
+ * `.env.local`, not the current directory's.
+ *
+ * Resolving this against `process.cwd()` was a panel finding (codex): a game
+ * launched from anywhere else silently read that directory's `.env.local`
+ * instead — someone else's key, or a planted one whose POE_BASE_URL pointed the
+ * whole session at an endpoint of the planter's choosing. The key belongs to
+ * the install, so it is found from the install.
+ */
+export const DEFAULT_ENV_FILE_PATH = resolve(packageRoot(), ENV_FILE_NAME);
+
 export interface LlmConfig {
   /** Base URL with no trailing slash; "/chat/completions" is appended to it. */
   readonly baseUrl: string;
@@ -39,7 +69,11 @@ export interface LlmConfig {
 export interface LoadLlmConfigOptions {
   /** Environment record to read. Defaults to `process.env`. */
   env?: Record<string, string | undefined>;
-  /** Path to the dotenv file used as a fallback. Defaults to `.env.local` in the current working directory. */
+  /**
+   * Path to the dotenv file used as a fallback. Defaults to the `POE_ENV_FILE`
+   * variable if set, otherwise {@link DEFAULT_ENV_FILE_PATH} — the package
+   * root's `.env.local`, never the current directory's.
+   */
   envFilePath?: string;
   apiKey?: string;
   baseUrl?: string;
@@ -98,7 +132,10 @@ export function readEnvFile(path: string): Record<string, string> {
  */
 export function loadLlmConfig(options: LoadLlmConfigOptions = {}): LlmConfig {
   const env = options.env ?? (process.env as Record<string, string | undefined>);
-  const envFilePath = options.envFilePath ?? resolve(process.cwd(), ENV_FILE_NAME);
+  const fromVariable = env[ENV_FILE_ENV];
+  const envFilePath =
+    options.envFilePath ??
+    (isPresent(fromVariable) ? resolve(fromVariable.trim()) : DEFAULT_ENV_FILE_PATH);
   const fileEnv = readEnvFile(envFilePath);
 
   const pick = (name: string): string | undefined => {
@@ -112,8 +149,9 @@ export function loadLlmConfig(options: LoadLlmConfigOptions = {}): LlmConfig {
   const apiKey = isPresent(options.apiKey) ? options.apiKey.trim() : pick(API_KEY_ENV);
   if (apiKey === undefined) {
     throw new LlmConfigError(
-      `Missing ${API_KEY_ENV}. Set it in the gitignored ${ENV_FILE_NAME} at the repository root ` +
-        `(as ${API_KEY_ENV}=<your key>) or export it in the environment. ` +
+      `Missing ${API_KEY_ENV}. Set it in the gitignored ${ENV_FILE_NAME} that was looked for at ` +
+        `${envFilePath} (as ${API_KEY_ENV}=<your key>), point ${ENV_FILE_ENV} at another file, ` +
+        `or export it in the environment. ` +
         `Note that Bun does not auto-load ${ENV_FILE_NAME} when NODE_ENV=test.`,
     );
   }
