@@ -18,6 +18,7 @@
  */
 
 import {
+  ROOMS,
   SUSPECTS,
   WEAPONS,
   type Card,
@@ -27,11 +28,7 @@ import {
   type Weapon,
 } from '../engine/cards.ts';
 import {
-  ROOMS,
-} from '../engine/cards.ts';
-import {
   legalDestinations,
-  positionKey,
   secretPassageFrom,
   type Destination,
   type Position,
@@ -328,24 +325,4 @@ export function playOpponentTurn(state: GameState, maxActions = 16): GameState {
     next = applyOpponentPlan(next, planOpponentAction(playerView(next, seat)));
   }
   throw new IllegalActionError(`${seat}'s turn did not finish within ${maxActions} actions`);
-}
-
-/** A plan as a plain sentence — the fallback when narration is unavailable. */
-export function describePlan(plan: OpponentPlan): string {
-  switch (plan.kind) {
-    case 'refute':
-      return 'shows a card in private';
-    case 'accuse':
-      return `accuses ${plan.triple.suspect} in the ${plan.triple.room} with the ${plan.triple.weapon}`;
-    case 'secret-passage':
-      return 'slips away through a secret passage';
-    case 'roll':
-      return 'rolls the die';
-    case 'move':
-      return `moves to ${positionKey(plan.position)}`;
-    case 'suggest':
-      return `suggests ${plan.suspect} with the ${plan.weapon}`;
-    case 'end-turn':
-      return 'ends the turn';
-  }
 }
