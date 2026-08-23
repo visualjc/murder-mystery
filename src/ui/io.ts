@@ -22,17 +22,30 @@ export type Io = {
   close(): void;
 };
 
-/** The real terminal: readline over stdin/stdout, no TUI framework (ADR-0003). */
+/**
+ * The real terminal: readline over stdin/stdout, no TUI framework (ADR-0003).
+ *
+ * Lines are QUEUED rather than read one `rl.question` at a time. A person types
+ * only when asked, but a piped script does not: it delivers every line at once,
+ * and readline drops every `line` event that arrives while no question is
+ * pending — so a scripted `bun run src/cli.ts < answers.txt` would lose all but
+ * the first answer or two. The standing listener keeps them (ADR-0003's whole
+ * point is that the game is scriptable).
+ */
 export function createStdio(): Io {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const buffered: string[] = [];
+  const waiting: ((line: string | null) => void)[] = [];
   let closed = false;
-  // One close listener for the whole session: attaching one per question would
-  // leak a listener on every prompt of a long game.
-  const untilClosed = new Promise<null>((resolve) => {
-    rl.once('close', () => {
-      closed = true;
-      resolve(null);
-    });
+
+  rl.on('line', (line: string) => {
+    const next = waiting.shift();
+    if (next === undefined) buffered.push(line);
+    else next(line);
+  });
+  rl.on('close', () => {
+    closed = true;
+    for (const pending of waiting.splice(0)) pending(null);
   });
 
   return {
@@ -40,9 +53,12 @@ export function createStdio(): Io {
       process.stdout.write(`${text}\n`);
     },
     async ask(prompt: string): Promise<string | null> {
+      process.stdout.write(prompt);
+      const queued = buffered.shift();
+      if (queued !== undefined) return queued.trim();
       if (closed) return null;
-      const answer = await Promise.race([rl.question(prompt), untilClosed]);
-      return answer === null ? null : answer.trim();
+      const line = await new Promise<string | null>((resolve) => waiting.push(resolve));
+      return line === null ? null : line.trim();
     },
     close(): void {
       if (!closed) rl.close();
