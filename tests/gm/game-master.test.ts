@@ -317,7 +317,7 @@ describe('formatUsageLedger', () => {
       byModel: { 'some-model': { calls: 3, prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } },
     });
     console.log('[ledger with failures]\n' + lines.join('\n'));
-    expect(lines[0]).toContain('LLM usage: 3 calls (5 attempts, 1 failed), 15 tokens');
+    expect(lines[0]).toContain('LLM usage: 3 calls (5 attempts, 1 failed call), 15 tokens');
   });
 
   /**

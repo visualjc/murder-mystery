@@ -285,7 +285,7 @@ describe('a whole game played through the game master', () => {
       expect(vendor.requests).toHaveLength(served.length + 1);
       expect(client.usage.attempts).toBe(vendor.requests.length);
       expect(text).toContain(
-        `LLM usage: ${served.length} calls (${vendor.requests.length} attempts, 1 failed), ` +
+        `LLM usage: ${served.length} calls (${vendor.requests.length} attempts, 1 failed call), ` +
           `${totals.total} tokens (${totals.prompt} prompt + ${totals.completion} completion)`,
       );
       expect(text).toContain(

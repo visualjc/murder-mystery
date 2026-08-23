@@ -229,7 +229,11 @@ export function formatUsageLedger(usage: SessionUsage): string[] {
   const extra =
     usage.attempts <= usage.calls
       ? ''
-      : ` (${usage.attempts} attempts${usage.failures === 0 ? '' : `, ${usage.failures} failed`})`;
+      : ` (${usage.attempts} attempts${
+          usage.failures === 0
+            ? ''
+            : `, ${usage.failures} failed ${usage.failures === 1 ? 'call' : 'calls'}`
+        })`;
   const lines = [
     `LLM usage: ${usage.calls} ${usage.calls === 1 ? 'call' : 'calls'}${extra}, ` +
       `${usage.total_tokens} tokens (${usage.prompt_tokens} prompt + ${usage.completion_tokens} completion)`,
