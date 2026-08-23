@@ -1,0 +1,2 @@
+{"id":"hhgk4q3y","ts":"2026-08-23T05:20:10Z","seq":0,"type":"note","actor":{"kind":"agent","id":"codex"},"item":"hcsshz65","payload":{"summary":"epic review finding: src/llm/config.ts — the default .env.local path is resolved from process.cwd() while the CLI and error promise the repository root; launching the script from another directory silently loads that directory POE credentials/base URL or misses the intended key","severity":"minor"}}
+{"id":"rrssv98t","ts":"2026-08-23T05:20:10Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"codex"},"payload":{}}
