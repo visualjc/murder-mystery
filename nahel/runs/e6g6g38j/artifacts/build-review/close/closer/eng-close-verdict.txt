@@ -1,0 +1,6 @@
+Close verdict for 0jrmya9a (engine), weighing the panel:
+- codex #1 (endTurn from awaiting-roll skips the mandatory move): ACCEPTED, fixed ee6a364 — endTurn refuses unless moved/suggested-after-pull/eliminated; two tests that pinned the rejected behavior rewritten.
+- codex #2 + agy #2 (refutation callback breaks determinism/serializability — BOTH vendors converged): ACCEPTED, fixed ed9e722 — callback deleted; awaiting-refutation phase + provideRefutationCard action; single-match resolves in-action; RNG untouched by suggestions; visibility scoping preserved and tested.
+- agy #1 (two-player deal = perfect knowledge): ACCEPTED, fixed 1eebe3d — minimum roster 3, classic minimum.
+- Bonus governance repair: docs/adr/0003 amended (d9ac7db) — its named-graph consequence superseded by resolution 5rwbt08h; the fixer also corrected my own wrong premise about WHICH ADR carried the claim.
+Suite 215/0, tsc clean. d6-per-turn retained: classic Cluedo rolls one die; noted for Jim's taste.

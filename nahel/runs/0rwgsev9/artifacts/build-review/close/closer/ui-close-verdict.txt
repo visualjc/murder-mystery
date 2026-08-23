@@ -1,0 +1,7 @@
+Close verdict for 6yxb3z7p (cli-ui), weighing the panel:
+- codex #1 (dead endpoint re-tried every flush, 60s stalls per turn): ACCEPTED, fixed df071f0 — per-session circuit breaker (2 consecutive failures), one visible notice, request-count-frozen tests.
+- codex #2 (save absent, item materially incomplete): DEFERRED to item 0msryhyf (save-load-sessions) — scope named save but never load; half a feature at v1; the game is playable in one sitting and deterministic replay makes save/load cheap later.
+- agy #1 (unbounded stdin queue OOM): DISMISSED-DISAGREED — stdin is a human or a finite script; a cap that drops lines would corrupt scripted games, and the realistic threat is nil at v1.
+- agy #2 (failed LLM calls invisible in ledger): ACCEPTED (matches the builder's own journaled gap), fixed 3fe7a3f — attempts+failures counted, all-failure sessions say so; deliberately-pinned old assertion rewritten as planned.
+Also journaled: agy's first panel dispatch itself failed trying to run ls (task-scoped preamble did not stop tool use) — feature feedback for nahel's oracle-role conventions.
+Suite 340/0, tsc clean.

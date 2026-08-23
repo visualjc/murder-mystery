@@ -1,0 +1,2 @@
+{"id":"c55w5a08","ts":"2026-08-23T02:48:58Z","seq":0,"type":"config.updated","actor":{"kind":"agent","id":"claude-code"},"payload":{"section":"roles","value":{"dev":{"agent":"claude","model":"opus","effort":"high","exec":"subagent"},"reviewer-codex":{"agent":"codex"},"reviewer-agy":{"agent":"agy","model":"gemini-3.1-pro-high"},"closer":{"exec":"self"}}}}
+{"id":"mx0sfbzc","ts":"2026-08-23T02:48:58Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

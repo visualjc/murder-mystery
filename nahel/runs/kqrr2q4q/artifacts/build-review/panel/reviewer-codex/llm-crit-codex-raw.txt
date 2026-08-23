@@ -1,0 +1,3702 @@
+⚠ preflight skipped (--no-preflight): dispatching without proving the run contract's healthcheck can run here. If the worker fails in confusing ways, re-run without the flag to see whether the environment is the cause.
+The timeout is cleared when response headers arrive, so a stalled body read can hang indefinitely or escape `tryChat()` as an untyped error.
+
+`parseUsage()` accepts invalid or partial usage and fabricates missing counts as zero, silently corrupting the required token ledger.
+Reading additional input from stdin...
+2026-08-23T03:03:10.365493Z ERROR codex_models_manager::cache: failed to load models cache: missing field `base_instructions` at line 97 column 5
+OpenAI Codex v0.144.4
+--------
+workdir: /Users/jimcarter/projects/personal_projects/murder-mystery-test
+model: gpt-5.6-sol
+provider: openai
+approval: on-request
+sandbox: workspace-write [workdir, /tmp, $TMPDIR] (network access enabled)
+reasoning effort: high
+reasoning summaries: none
+session id: 01a02c92-746a-75e3-8b5e-8885d3dfb0e2
+--------
+user
+You are a worker dispatched by nahel for the "reviewer-codex" role.
+You are acting as agent:codex: NAHEL_ACTOR is already set in your environment.
+
+Task:
+You are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev
+
+WHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project's
+only LLM transport. POST {base}/chat/completions, Authorization: Bearer, body
+{model, messages, ...params}; returns {text, usage, model} where usage is the
+response's own {prompt_tokens, completion_tokens, total_tokens} or null when the
+provider omits it. A per-client session ledger sums tokens overall and per model
+(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.
+
+FILE MAP
+  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser
+  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol
+  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage
+  src/llm/index.ts    public surface
+  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor
+  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests
+  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)
+
+TESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail
+(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.
+
+DECISIONS
+- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item's
+  "degrade, don't throw into the game loop" and the directive's "typed error". Game
+  master should call tryChat.
+- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun's
+  auto-load; env wins over file, explicit options win over both.
+- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,
+  never on timeout. Timeout via AbortController, cleared in finally.
+- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and
+  echoes the caller's casing back, which would otherwise split one model's ledger.
+- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.
+ --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences.
+codex
+I’m using the repository’s code-review workflow and Nahel brief to inspect the implementation against its stated contract.
+exec
+/bin/zsh -lc "sed -n '1,240p' /Users/jimcarter/.agents/skills/code-review/SKILL.md" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ succeeded in 0ms:
+---
+name: code-review
+description: Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes — Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/PRD asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X".
+---
+
+Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
+
+- **Standards** — does the code conform to this repo's documented coding standards?
+- **Spec** — does the code faithfully implement the originating issue / PRD / spec?
+
+Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
+
+The issue tracker should have been provided to you — run `/setup-matt-pocock-skills` if `docs/agents/issue-tracker.md` is missing.
+
+## Process
+
+### 1. Pin the fixed point
+
+Whatever the user said is the fixed point — a commit SHA, branch name, tag, `main`, `HEAD~5`, etc. If they didn't specify one, ask for it.
+
+Capture the diff command once: `git diff <fixed-point>...HEAD` (three-dot, so the comparison is against the merge-base). Also note the list of commits via `git log <fixed-point>..HEAD --oneline`.
+
+Before going further, confirm the fixed point resolves (`git rev-parse <fixed-point>`) and the diff is non-empty. A bad ref or empty diff should fail here — not inside two parallel sub-agents.
+
+### 2. Identify the spec source
+
+Look for the originating spec, in this order:
+
+1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.) — fetch via the workflow in `docs/agents/issue-tracker.md`.
+2. A path the user passed as an argument.
+3. A PRD/spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.
+4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report "no spec available".
+
+### 3. Identify the standards sources
+
+Anything in the repo that documents how code should be written, such as `CODING_STANDARDS.md` or `CONTRIBUTING.md`.
+
+On top of whatever the repo documents, the Standards axis always carries the **smell baseline** below — a fixed set of Fowler code smells (_Refactoring_, ch.3) that applies even when a repo documents nothing. Two rules bind it:
+
+- **The repo overrides.** A documented repo standard always wins; where it endorses something the baseline would flag, suppress the smell.
+- **Always a judgement call.** Each smell is a labelled heuristic ("possible Feature Envy"), never a hard violation — and, like any standard here, skip anything tooling already enforces.
+
+Each smell reads *what it is* → *how to fix*; match it against the diff:
+
+- **Mysterious Name** — a function, variable, or type whose name doesn't reveal what it does or holds. → rename it; if no honest name comes, the design's murky.
+- **Duplicated Code** — the same logic shape appears in more than one hunk or file in the change. → extract the shared shape, call it from both.
+- **Feature Envy** — a method that reaches into another object's data more than its own. → move the method onto the data it envies.
+- **Data Clumps** — the same few fields or params keep travelling together (a type wanting to be born). → bundle them into one type, pass that.
+- **Primitive Obsession** — a primitive or string standing in for a domain concept that deserves its own type. → give the concept its own small type.
+- **Repeated Switches** — the same `switch`/`if`-cascade on the same type recurs across the change. → replace with polymorphism, or one map both sites share.
+- **Shotgun Surgery** — one logical change forces scattered edits across many files in the diff. → gather what changes together into one module.
+- **Divergent Change** — one file or module is edited for several unrelated reasons. → split so each module changes for one reason.
+- **Speculative Generality** — abstraction, parameters, or hooks added for needs the spec doesn't have. → delete it; inline back until a real need shows.
+- **Message Chains** — long `a.b().c().d()` navigation the caller shouldn't depend on. → hide the walk behind one method on the first object.
+- **Middle Man** — a class or function that mostly just delegates onward. → cut it, call the real target direct.
+- **Refused Bequest** — a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
+
+### 4. Spawn both sub-agents in parallel
+
+Send a single message with two `Agent` tool calls. Use the `general-purpose` subagent for both.
+
+**Standards sub-agent prompt** — include:
+
+- The full diff command and commit list.
+- The list of standards-source files you found in step 3, **plus the smell baseline from step 3** pasted in full — the sub-agent has no other access to it.
+- The brief: "Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + the rule); and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls — documented-standard breaches can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. Under 400 words."
+
+**Spec sub-agent prompt** — include:
+
+- The diff command and commit list.
+- The path or fetched contents of the spec.
+- The brief: "Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words."
+
+If the spec is missing, skip the Spec sub-agent and note this in the final report.
+
+### 5. Aggregate
+
+Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Do **not** merge or rerank findings — the two axes are deliberately separate (see _Why two axes_).
+
+End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes — that's the reranking the separation exists to prevent.
+
+## Why two axes
+
+A change can pass one axis and fail the other:
+
+- Code that follows every standard but implements the wrong thing → **Standards pass, Spec fail.**
+- Code that does exactly what the issue asked but breaks the project's conventions → **Spec pass, Standards fail.**
+
+Reporting them separately stops one axis from masking the other.
+
+exec
+/bin/zsh -lc 'NAHEL_ACTOR=agent:codex nahel brief' in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ exited 127 in 0ms:
+zsh:1: command not found: nahel
+
+exec
+/bin/zsh -lc "pwd; ls -la; sed -n '1,240p' PRODUCT.md; sed -n '1,240p' CONTEXT.md; rg -n 'br5phvfw|kqrr2q4q|llm-client' nahel package.json bun.lock 2>/dev/null" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ succeeded in 0ms:
+/Users/jimcarter/projects/personal_projects/murder-mystery-test
+total 72
+drwxr-xr-x@ 17 jimcarter  staff   544 Aug 22 22:01 .
+drwxr-xr-x  24 jimcarter  staff   768 Aug 22 18:30 ..
+drwxr-xr-x@ 10 jimcarter  staff   320 Aug 22 22:02 .drive
+-rw-r--r--@  1 jimcarter  staff    56 Aug 22 18:03 .env.local
+drwxr-xr-x@ 12 jimcarter  staff   384 Aug 22 22:03 .git
+-rw-r--r--@  1 jimcarter  staff    29 Aug 22 17:57 .gitignore
+-rw-r--r--@  1 jimcarter  staff  2074 Aug 22 17:57 AGENTS.md
+-rw-r--r--@  1 jimcarter  staff  3514 Aug 22 17:59 CONTEXT.md
+-rw-r--r--@  1 jimcarter  staff  6792 Aug 22 17:59 PRODUCT.md
+-rw-r--r--@  1 jimcarter  staff   939 Aug 22 21:52 bun.lock
+drwxr-xr-x@  3 jimcarter  staff    96 Aug 22 17:59 docs
+drwxr-xr-x@  9 jimcarter  staff   288 Aug 22 21:48 nahel
+drwxr-xr-x@  5 jimcarter  staff   160 Aug 22 21:52 node_modules
+-rw-r--r--@  1 jimcarter  staff   234 Aug 22 21:52 package.json
+drwxr-xr-x@  4 jimcarter  staff   128 Aug 22 21:55 src
+drwxr-xr-x@  4 jimcarter  staff   128 Aug 22 22:00 tests
+-rw-r--r--@  1 jimcarter  staff   475 Aug 22 21:52 tsconfig.json
+# murder-mystery-test — Product Constitution
+
+> This is the constitution: human-owned, immutable without the maintainer's explicit sign-off, in every governance mode. Agents may propose amendments as observations; they may never edit this file autonomously.
+
+## Goal
+
+> build a little murder trivia mystery game that follows the standard Clue style rule set, but uses an LLM (api key and endpoint, or oauth token) to answer questions and move the game forward (acts like a game master). This mini-app also needs to be planning partner and nahel driven. use the nahel features you are building to build a simple murder mystery clue like game using an LLM as a scenrario builder and simple game master; this tests that we are using different agents, llms, etc and that the token cost is shared and such.
+
+The quoted paragraph is the human's signed content, and the only signed
+content in this document (recorded as `founding.paragraph` in `nahel/config`).
+
+## Domain facts
+
+UNCONFIRMED — drafted by an agent from the paragraph; not human-signed.
+
+- A standard Clue/Cluedo deck is three categories: 6 suspects, 6 weapons, 9 rooms — 21 cards total.
+- Exactly one card of each category is drawn at setup into the **case file** (the solution triple). It is hidden from every player for the whole game.
+- The remaining 18 cards are dealt round-robin to the players. Hands are uneven when the player count does not divide 18; that is normal and not an error.
+- A turn is move-then-suggest: the player moves to a room, then may make a **suggestion** naming a suspect, a weapon, and the room they currently occupy.
+- A suggestion pulls the named suspect token and weapon token into the suggester's room, which is itself information other players can use.
+- Refutation goes clockwise from the suggester: the first player holding any one of the three named cards must show exactly one of them, privately, to the suggester alone. Everyone else sees only THAT a card was shown and by whom, never which card.
+- If no player can refute, that fact is public and is the strongest signal in the game.
+- An **accusation** may name any suspect/weapon/room triple regardless of the accuser's position. It is checked against the case file: correct ends the game with a win; incorrect eliminates the accuser from winning, though they remain in play to refute other players' suggestions.
+- Deduction is a closed-world logic problem: every card is either in the case file or in exactly one hand, so a card proven to be in a hand is proven out of the case file.
+- An LLM game master narrates and answers in-fiction; it does not hold the case file's authority. Legality, refutation order, and win/loss are decidable from state alone.
+- OpenAI-compatible chat completions is the de facto shape: `POST /v1/chat/completions`, bearer-token auth, a request body of `model` plus a `messages` array of `{role, content}`, a reply at `choices[0].message.content`, and a `usage` object reporting `prompt_tokens`, `completion_tokens`, `total_tokens`.
+- That `usage` object is the only honest source of token cost. Cost accounting that estimates from string length is a guess; the response's own numbers are the measurement.
+- Poe's `https://api.poe.com/v1/chat/completions` implements that shape, so a single OpenAI-compatible client reaches it and every other provider speaking the same protocol.
+
+## Hard constraints
+
+UNCONFIRMED — drafted by an agent from the paragraph; not human-signed.
+
+1. TypeScript, running on Bun. No other runtime is a target.
+2. The LLM endpoint is `https://api.poe.com/v1/chat/completions`. The key is read from a gitignored `.env.local` as `POE_API_KEY` and is NEVER committed, never printed, never written into nahel state, and never embedded in a prompt echoed to disk.
+3. The game must be playable end to end as a terminal CLI, with no other interface required.
+4. The game-state engine is deterministic and owns every rule outcome — deal, legal moves, suggestion validity, refutation order and choice, accusation adjudication, win/loss. Game legality NEVER depends on parsing LLM output. If the LLM returns nothing, garbage, or an error, the game must still be playable and correct.
+5. The LLM's role is strictly narration, scenario flavor, and in-fiction Q&A layered on top of engine-decided facts. It may describe what happened; it may not decide what happened.
+6. Token usage from every LLM call is captured from the response's `usage` object and accounted for, so the cost of a session is measured rather than estimated.
+7. Single-player against LLM-driven suspects is acceptable scope; a human opponent is not required for the game to be complete.
+8. The project is nahel-driven: work is decomposed into nahel items, dispatched through the routing map, and journaled. Founding and planning happen in nahel, not in side documents.
+
+## Non-goals
+
+UNCONFIRMED — drafted by an agent from the paragraph; not human-signed.
+
+- No GUI and no web frontend in v1. The terminal is the product surface.
+- No multiplayer networking — no server, no lobby, no remote players.
+- No persistence beyond a save file. No database, no accounts, no cloud sync.
+- No provider integrations beyond the OpenAI-compatible shape in v1. Other providers are reachable only insofar as they speak that protocol; no bespoke SDKs.
+- Not a faithful reimplementation of any published Clue edition's board, art, or trademarks — the standard rule structure only.
+- Not a general-purpose LLM agent framework. The LLM client exists to serve this game.
+
+Amendment note (hands-off founding): only the quoted paragraph is
+human-signed. Everything else in this document is agent elaboration —
+AFK work may rely on it as a parkable assumption, never as an
+un-overridable rule, and the human promotes any of it into the
+constitution later by signing it. See nahel's own
+`docs/adr/0008-constitution-vs-legislation.md`.
+
+## Governance
+
+```yaml
+governance:
+  product: delegated    # the human handed over a paragraph and left — product legislation is delegated to cross-vendor agent consensus
+  architecture: human   # architecture stays human until the architect slice ships
+```
+
+## Change log
+
+Every change to this document is recorded here with the human sign-off that authorized it. Agents never edit this file autonomously: amendments are proposed as observations and applied only with the maintainer's recorded sign-off.
+
+- **2026-08-22** — Skeleton scaffolded by `nahel init`; awaiting the maintainer's first review and sign-off.
+- **2026-08-22** — Hands-off founding elaboration written by `agent:opus-founder` around Jim Carter's verbatim chat-kickoff paragraph. The founding act itself was agent-run, so the paragraph is transcribed rather than signed; this document is UNSIGNED pending Jim's ratification.
+# murder-mystery-test — Ubiquitous Language
+
+Glossary of the domain model. Terms here are used exactly and consistently in code, workflows, docs, and conversation. Sharpen a term the moment it wobbles — a wobbling term is a design bug.
+
+UNCONFIRMED — drafted by an agent during a hands-off founding; not human-signed.
+
+## Game state
+
+- **Card** — one of the 21 deck entries, belonging to exactly one **category**: suspect, weapon, or room. A card is either in the case file or in exactly one player's hand. Never both, never neither.
+- **Case file** — the hidden triple of one suspect, one weapon, and one room set aside at setup. It is the answer, it is never dealt, and it is revealed only when an accusation is adjudicated or the game ends. The engine alone reads it.
+- **Solution triple** — the three cards making up the case file, named as a value: `{suspect, weapon, room}`. Used when talking about a candidate answer (a player's guess) as well as the true one.
+- **Hand** — the set of cards dealt to one player. Private to that player; a hand's contents are proof a card is NOT in the case file.
+- **Player** — a participant with a hand, a position on the board, and an accusation status. The human is one player; the rest are LLM-driven suspects, but a player's rules are identical either way.
+- **Turn** — one player's move-then-suggest cycle: relocate, then optionally suggest. An accusation may be made on a player's own turn.
+
+## Play actions
+
+- **Suggestion** — a naming of suspect + weapon + room made from the room the suggester currently occupies. It relocates the named suspect and weapon tokens into that room and opens a refutation round. It is a question, not a claim.
+- **Refutation** — the answer to a suggestion. Going clockwise from the suggester, the first player holding any of the three named cards shows exactly one of them privately to the suggester. All other players learn only who refuted, never with what. "Nobody could refute" is public information.
+- **Accusation** — a naming of a solution triple checked directly against the case file. Correct wins the game; incorrect permanently bars the accuser from winning while leaving them in play to refute. Unlike a suggestion, it is not constrained by the accuser's position.
+
+## LLM layer
+
+- **Game master** — the LLM role that narrates engine-decided outcomes, answers in-fiction questions, and voices the scene. It has no authority: it is told what happened and describes it. It never decides legality, refutation, or the case file.
+- **Scenario** — the LLM-generated fiction wrapped around a mechanically standard game: the setting, the six suspects' names and motives, the weapons' descriptions, the rooms' character. Generated once at game start and thereafter fixed for the session.
+- **Narration** — the prose the game master returns for a specific engine event. Discardable by construction: if narration fails or is empty, the engine's plain-text description of the same event is shown instead and play continues.
+- **Chat client** — the OpenAI-compatible transport: one function that posts messages to `/v1/chat/completions` with a bearer key and returns the reply text plus the response's `usage` numbers. Provider-agnostic by protocol, configured to Poe by default.
+- **Token accounting** — the per-call record of `prompt_tokens`, `completion_tokens`, and `total_tokens` read straight from each response's `usage` object, summed per session. Measured, never estimated from string length.
+nahel/runs/kqrr2q4q/run.json:2:  "id": "kqrr2q4q",
+nahel/runs/kqrr2q4q/run.json:3:  "item": "br5phvfw",
+nahel/journal/run-kqrr2q4q.jsonl:1:{"id":"28jnnedp","ts":"2026-08-23T02:49:11Z","seq":0,"type":"run.started","actor":{"kind":"agent","id":"claude-code"},"run":"kqrr2q4q","item":"br5phvfw","payload":{"target":"run","record":{"id":"kqrr2q4q","item":"br5phvfw","actor":{"kind":"agent","id":"claude-code"},"lane":"full","phase":"starting","status":"active","started":"2026-08-23T02:49:11Z"}}}
+nahel/journal/run-kqrr2q4q.jsonl:2:{"id":"37yw0sen","ts":"2026-08-23T02:49:28Z","seq":1,"type":"playbook.step-started","actor":{"kind":"agent","id":"claude-code"},"run":"kqrr2q4q","item":"br5phvfw","payload":{"playbook":"build-review","step":"build","roles":["dev"],"guidance":"Implement the work item this drive rides on, exactly per the scope journaled on the item and the constraints in PRODUCT.md and docs/adr/. TypeScript on Bun, TDD (failing test first), bun test green before you finish. Commit in small commits on the epic branch.","input":"Host-materialized directive for role dev (exec=subagent, claude/opus/high): implement item br5phvfw (llm-client) per its journaled scope — OpenAI-compatible chat client, base default https://api.poe.com/v1, POE_API_KEY from .env.local, returns reply text AND token usage (the usage figures feed nahel's token-cost journaling convention). No mocks in tests: a fake OpenAI-compatible HTTP server in-process is the test double per house testing rules (real HTTP, stub vendor). Branch epic/murder-mystery-game."}}
+nahel/journal/run-kqrr2q4q.jsonl:3:{"id":"adq7pxkm","ts":"2026-08-23T02:51:53Z","seq":2,"type":"note","actor":{"kind":"agent","id":"opus-dev"},"run":"kqrr2q4q","item":"br5phvfw","payload":{"summary":"verified Bun env auto-load: bun 1.3.10 loads .env.local into process.env at normal runtime (NODE_ENV undefined), but NOT under 'bun test' — bun test sets NODE_ENV=test and Bun deliberately skips .env.local in test env. Probe: POE_API_KEY present=true at runtime, present=false under bun test, same cwd. Consequence for br5phvfw: relying on Bun's auto-load alone would make the client silently keyless in any test or NODE_ENV=test context, so config.ts parses .env.local explicitly as a fallback after process.env, rather than trusting the runtime."}}
+nahel/journal/run-kqrr2q4q.jsonl:4:{"id":"86agrqsm","ts":"2026-08-23T03:00:31Z","seq":3,"type":"note","actor":{"kind":"agent","id":"opus-dev"},"run":"kqrr2q4q","item":"br5phvfw","payload":{"summary":"live-verified the provider contract against real Poe (read-only GET /v1/models plus two minimal chat calls, ~1.3k tokens total). Findings: (1) Poe lists 343 models with LOWERCASE-HYPHENATED ids (claude-sonnet-4.5, claude-opus-4.8, gpt-5.4, gemini-3.1-pro) — the founding-era guess 'Claude-Sonnet-4.5' is not a listed id, DEFAULT_MODEL corrected to claude-sonnet-4.5. (2) The chat endpoint matches model ids CASE-INSENSITIVELY and echoes back verbatim whatever casing the request sent, so response.model is caller-controlled, not canonical. That is an attribution bug: keying the session ledger on the echoed string splits one model's tokens across two buckets. Fixed — byModel is keyed on usageKeyFor(model) = trim+lowercase, with a regression test. (3) A 4-token reply to a ~7-token prompt reported prompt_tokens=627: Poe injects a substantial system preamble, so any length-based estimate would be off by ~90x. Concrete evidence for PRODUCT.md's 'measured, never estimated'."}}
+nahel/journal/run-kqrr2q4q.jsonl:5:{"id":"vf6fhg9a","ts":"2026-08-23T03:00:39Z","seq":4,"type":"note","actor":{"kind":"agent","id":"opus-dev"},"run":"kqrr2q4q","item":"br5phvfw","payload":{"summary":"scope tension resolved by offering both surfaces. The item's journaled scope says errors must 'return a failure the caller can degrade on rather than throwing into the game loop'; the host's build directive says non-2xx must produce a typed error. Rather than pick one, ChatClient exposes chat() which throws a typed LlmError and tryChat() which returns a discriminated {ok:true,value}|{ok:false,error}. tryChat catches only LlmError and re-throws anything else, so a genuine programmer bug is never swallowed. The game loop is expected to call tryChat and fall back to plain engine text per PRODUCT.md hard constraint 5; game-master (k0n64xb4) should be built against tryChat, not chat."}}
+nahel/journal/run-kqrr2q4q.jsonl:6:{"id":"rdvh4w3v","ts":"2026-08-23T03:02:34Z","seq":5,"type":"playbook.step-committed","actor":{"kind":"agent","id":"claude-code"},"run":"kqrr2q4q","item":"br5phvfw","payload":{"playbook":"build-review","step":"build","executor":"agent:claude","role_status":{"dev":"ok"},"outputs":{"dev":"nahel/runs/kqrr2q4q/artifacts/build-review/build/dev/llm-summary.txt"},"bindings":{"change-summary":"CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project's\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse's own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item's\n  \"degrade, don't throw into the game loop\" and the directive's \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun's\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller's casing back, which would otherwise split one model's ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n"}}}
+nahel/journal/run-kqrr2q4q.jsonl:7:{"id":"hwtytdan","ts":"2026-08-23T03:02:34Z","seq":6,"type":"playbook.step-started","actor":{"kind":"agent","id":"claude-code"},"run":"kqrr2q4q","item":"br5phvfw","payload":{"playbook":"build-review","step":"panel","roles":["reviewer-codex","reviewer-agy"],"guidance":"You are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project's\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse's own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item's\n  \"degrade, don't throw into the game loop\" and the directive's \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun's\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller's casing back, which would otherwise split one model's ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences.","input":"playbook: build-review — Dogfood build recipe: opus subagent builds, cross-vendor panel critiques, host closes\nitem: br5phvfw    run: kqrr2q4q\n\nstep 2/3: panel  [PANEL: 2 roles — fan out, ONE envelope: reviewer-codex, reviewer-agy]\n  guidance: You are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project's\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse's own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item's\n  \"degrade, don't throw into the game loop\" and the directive's \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun's\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller's casing back, which would otherwise split one model's ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences.\n  role reviewer-codex  exec=spawn  agent=codex  via=roles.reviewer-codex\n    argv: 'codex' 'exec' '--sandbox' 'workspace-write' 'You are a worker dispatched by nahel for the \"reviewer-codex\" role.\nYou are acting as agent:codex: NAHEL_ACTOR is already set in your environment.\n\nTask:\nYou are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project'\\''s\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse'\\''s own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item'\\''s\n  \"degrade, don'\\''t throw into the game loop\" and the directive'\\''s \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun'\\''s\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller'\\''s casing back, which would otherwise split one model'\\''s ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences.'\n    dispatch: nahel dispatch --role 'reviewer-codex' --item 'br5phvfw' --playbook 'build-review' --step 'panel' --drive-run 'kqrr2q4q' -- 'You are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project'\\''s\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse'\\''s own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item'\\''s\n  \"degrade, don'\\''t throw into the game loop\" and the directive'\\''s \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun'\\''s\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller'\\''s casing back, which would otherwise split one model'\\''s ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences.'\n  role reviewer-agy  exec=spawn  agent=agy  model=gemini-3.1-pro-high  via=roles.reviewer-agy\n    argv: 'agy' '--output-format' 'json' '--model' 'gemini-3.1-pro-high' '--print' 'You are a worker dispatched by nahel for the \"reviewer-agy\" role.\nYou are acting as agent:agy: NAHEL_ACTOR is already set in your environment.\n\nTask:\nYou are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project'\\''s\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse'\\''s own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item'\\''s\n  \"degrade, don'\\''t throw into the game loop\" and the directive'\\''s \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun'\\''s\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller'\\''s casing back, which would otherwise split one model'\\''s ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences.'\n    dispatch: nahel dispatch --role 'reviewer-agy' --item 'br5phvfw' --playbook 'build-review' --step 'panel' --drive-run 'kqrr2q4q' -- 'You are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project'\\''s\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse'\\''s own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item'\\''s\n  \"degrade, don'\\''t throw into the game loop\" and the directive'\\''s \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun'\\''s\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller'\\''s casing back, which would otherwise split one model'\\''s ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences.'\n  envelope:\n    start:  nahel playbook step start 'build-review' 'panel' --item 'br5phvfw' --run 'kqrr2q4q' [--input <text|@file>]\n    commit: nahel playbook step commit 'build-review' 'panel' --item 'br5phvfw' --run 'kqrr2q4q' --executor <actor> --role-status 'reviewer-codex'=<ok|failed|skipped> --role-status 'reviewer-agy'=<ok|failed|skipped> [--output 'reviewer-codex'=@<path>] [--output 'reviewer-agy'=@<path>] [--binding <key>=<text|@file>]\n","input_from":"/Users/jimcarter/projects/personal_projects/murder-mystery-test/.drive/llm-panel-plan.txt"}}
+nahel/journal/run-a0evcab1.jsonl:1:{"id":"abprtwhw","ts":"2026-08-23T03:03:09Z","seq":0,"type":"run.started","actor":{"kind":"agent","id":"claude-code"},"run":"a0evcab1","item":"br5phvfw","payload":{"target":"run","record":{"id":"a0evcab1","item":"br5phvfw","actor":{"kind":"agent","id":"agy"},"lane":"full","phase":"dispatched","status":"active","started":"2026-08-23T03:03:09Z"}}}
+nahel/journal/run-a0evcab1.jsonl:2:{"id":"jf217wt4","ts":"2026-08-23T03:03:09Z","seq":1,"type":"dispatch.started","actor":{"kind":"agent","id":"claude-code"},"run":"a0evcab1","item":"br5phvfw","payload":{"role":"reviewer-agy","playbook":"build-review","step":"panel","drive_run":"kqrr2q4q","agent":"agy","model":"gemini-3.1-pro-high","via":"roles.reviewer-agy","preflight":"skipped","invocation":{"binary":"agy","args":["--output-format","json","--model","gemini-3.1-pro-high","--print","You are a worker dispatched by nahel for the \"reviewer-agy\" role.\nYou are acting as agent:agy: NAHEL_ACTOR is already set in your environment.\n\nTask:\nYou are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project's\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse's own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item's\n  \"degrade, don't throw into the game loop\" and the directive's \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun's\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller's casing back, which would otherwise split one model's ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences."],"env":{"NAHEL_ACTOR":"agent:agy"}}}}
+nahel/journal/run-0mstzvyk.jsonl:1:{"id":"e5xc9xzt","ts":"2026-08-23T03:03:09Z","seq":0,"type":"run.started","actor":{"kind":"agent","id":"claude-code"},"run":"0mstzvyk","item":"br5phvfw","payload":{"target":"run","record":{"id":"0mstzvyk","item":"br5phvfw","actor":{"kind":"agent","id":"codex"},"lane":"full","phase":"dispatched","status":"active","started":"2026-08-23T03:03:09Z"}}}
+nahel/journal/run-0mstzvyk.jsonl:2:{"id":"xgzghj1n","ts":"2026-08-23T03:03:09Z","seq":1,"type":"dispatch.started","actor":{"kind":"agent","id":"claude-code"},"run":"0mstzvyk","item":"br5phvfw","payload":{"role":"reviewer-codex","playbook":"build-review","step":"panel","drive_run":"kqrr2q4q","agent":"codex","via":"roles.reviewer-codex","preflight":"skipped","invocation":{"binary":"codex","args":["exec","--sandbox","workspace-write","You are a worker dispatched by nahel for the \"reviewer-codex\" role.\nYou are acting as agent:codex: NAHEL_ACTOR is already set in your environment.\n\nTask:\nYou are reviewing a change to a Clue-style murder-mystery CLI game (deterministic engine, LLM game master via an OpenAI-compatible endpoint). Change summary: CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev\n\nWHAT EXISTS: an OpenAI-compatible chat-completions client (ADR-0002), the project's\nonly LLM transport. POST {base}/chat/completions, Authorization: Bearer, body\n{model, messages, ...params}; returns {text, usage, model} where usage is the\nresponse's own {prompt_tokens, completion_tokens, total_tokens} or null when the\nprovider omits it. A per-client session ledger sums tokens overall and per model\n(TOKEN-COUNT attribution v1, resolution 5rwbt08h). No vendor SDK, no dependencies.\n\nFILE MAP\n  src/llm/config.ts   base URL/key/model/timeout resolution; dotenv parser\n  src/llm/errors.ts   LlmError base + Config/Http/Network/Timeout/Protocol\n  src/llm/client.ts   ChatClient (chat, tryChat, usage), parseCompletion, parseUsage\n  src/llm/index.ts    public surface\n  tests/llm/fake-vendor.ts   real in-process Bun.serve OpenAI-compatible vendor\n  tests/llm/client.test.ts   21 tests   tests/llm/config.test.ts   8 tests\n  package.json / tsconfig.json  minimal Bun+TS scaffolding (created; sibling raced OK)\n\nTESTS: 29 pass / 0 fail / 106 assertions in tests/llm. Full repo suite 61 pass / 0 fail\n(engine sibling included). No mocks anywhere: real HTTP over TCP against a stub vendor.\n\nDECISIONS\n- chat() throws typed errors; tryChat() returns {ok,...} — satisfies both the item's\n  \"degrade, don't throw into the game loop\" and the directive's \"typed error\". Game\n  master should call tryChat.\n- .env.local is parsed explicitly, because bun test (NODE_ENV=test) suppresses Bun's\n  auto-load; env wins over file, explicit options win over both.\n- Retry: exactly one, on 429/5xx only, after retryBackoffMs. Never on other 4xx,\n  never on timeout. Timeout via AbortController, cleared in finally.\n- byModel is keyed on the LOWERCASED model id: Poe matches ids case-insensitively and\n  echoes the caller's casing back, which would otherwise split one model's ledger.\n- DEFAULT_MODEL = claude-sonnet-4.5, verified present in GET /v1/models.\n --- Name the TWO most serious flaws or risks you see, one sentence each. Output only the two sentences."],"env":{"NAHEL_ACTOR":"agent:codex"}}}}
+nahel/runs/kqrr2q4q/artifacts/build-review/build/dev/llm-summary.txt:1:CHANGE SUMMARY — item br5phvfw (llm-client), run kqrr2q4q, agent:opus-dev
+nahel/journal/archive/session-yhptfv11.jsonl:1:{"id":"kfmgwsbb","ts":"2026-08-23T02:49:11Z","seq":0,"type":"item.updated","actor":{"kind":"agent","id":"claude-code"},"item":"br5phvfw","payload":{"target":"item","record":{"id":"br5phvfw","name":"llm-client","type":"feature","status":"in-progress","lane":"full","parent":"hcsshz65","depends_on":[],"external_refs":[],"created":"2026-08-22T23:02:20Z","updated":"2026-08-23T02:49:11Z"},"body":""}}
+nahel/runs/0mstzvyk/run.json:3:  "item": "br5phvfw",
+nahel/journal/archive/session-p32a9y00.jsonl:1:{"id":"1gswfkt8","ts":"2026-08-22T23:02:20Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"opus-founder"},"item":"br5phvfw","payload":{"target":"item","record":{"id":"br5phvfw","name":"llm-client","type":"feature","status":"backlog","lane":"full","parent":"hcsshz65","depends_on":[],"external_refs":[],"created":"2026-08-22T23:02:20Z","updated":"2026-08-22T23:02:20Z"},"body":""}}
+nahel/runs/a0evcab1/run.json:3:  "item": "br5phvfw",
+nahel/items/br5phvfw.md:2:id: br5phvfw
+nahel/items/br5phvfw.md:3:name: llm-client
+nahel/journal/archive/session-q4xe7fq2.jsonl:1:{"id":"14v45dzw","ts":"2026-08-22T23:02:20Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"opus-founder"},"item":"k0n64xb4","payload":{"target":"item","record":{"id":"k0n64xb4","name":"game-master","type":"feature","status":"backlog","lane":"full","parent":"hcsshz65","depends_on":["0jrmya9a","br5phvfw"],"external_refs":[],"created":"2026-08-22T23:02:20Z","updated":"2026-08-22T23:02:20Z"},"body":""}}
+nahel/items/k0n64xb4.md:10:  - br5phvfw
+nahel/journal/archive/session-5djst3rr.jsonl:1:{"id":"e06gzk95","ts":"2026-08-22T23:03:34Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"item":"br5phvfw","payload":{"summary":"scope: the OpenAI-compatible chat client. POST to the configured base (default https://api.poe.com/v1) /chat/completions with Authorization: Bearer, body of model plus messages; returns reply text AND the response usage object (prompt_tokens, completion_tokens, total_tokens). Loads POE_API_KEY from a gitignored .env.local; never logs or persists the key. Per-session usage accumulation. Error and timeout handling that returns a failure the caller can degrade on rather than throwing into the game loop. Blocks game-master."}}
+nahel/journal/archive/session-7jgpekhs.jsonl:1:{"id":"dpnx16pz","ts":"2026-08-22T23:03:34Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"item":"hcsshz65","payload":{"summary":"scope (parent feature): the playable murder-mystery game. Standard Clue rule structure, deterministic engine, LLM game master over Poe's OpenAI-compatible endpoint, terminal CLI. Done when a human can play a full game to a correct accusation from the terminal and the session reports its token usage. Decomposed into engine, llm-client, game-master, cli-ui, e2e."}}
+nahel/journal/archive/session-g91yj4bn.jsonl:1:{"id":"d4gk5st5","ts":"2026-08-22T23:10:52Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"payload":{"summary":"founding complete (hands-off, agent-run). FOUNDED: PRODUCT.md carrying Jim Carter's chat-kickoff paragraph verbatim under ## Goal with 13 domain facts, 8 hard constraints and 6 non-goals all marked UNCONFIRMED under the authority-boundary template; CONTEXT.md with a 17-term glossary; three founding ADRs (0001 deterministic engine vs LLM narrator, 0002 OpenAI-compatible client with Poe configured, 0003 CLI-first UI); governance product=delegated architecture=human; merge authority=human; routing claude-opus on architecture/implementation/default, codex on review, claude-opus on review2, with codex's unattended dispatch invocation recorded; run contract launch='bun run src/cli.ts' seed='true' test='bun test' healthcheck='bun run src/cli.ts --help' env=[POE_API_KEY]; and a seven-item decomposition (plan jpgyfzrz, feature hcsshz65 murder-mystery-game, children engine 0jrmya9a, llm-client br5phvfw, game-master k0n64xb4, cli-ui 6yxb3z7p, e2e cycx4815 wired by parent and depends_on). Tier recorded as SEED. WARNINGS LEFT STANDING: (1) validate founding.unsigned — the founding act was agent-run, so the paragraph authorizes nothing until Jim re-records it himself; this is the only validate warning and it is expected, not a defect. (2) The first-scaffold obligation is journaled and UNDISCHARGED — the repo has no src/ yet, so nahel doctor cannot exit 0 and the contract healthcheck fails; the codex verification dispatch had to run with --no-preflight for that reason and the skip is journaled with the dispatch. (3) The cross-vendor elaboration verification returned verdict=disagree, so standard tier was refused. PARKED: found-murder-mystery-test jpgyfzrz is blocked pending three human decisions — ratify the founding, settle whether 'token cost is shared' means real cost or token counts, and settle room-adjacency vs standard dice-and-corridor movement. A next session should not dispatch implementation until Jim ratifies: the autonomy gate refuses an unsigned constitution."}}
+nahel/journal/archive/session-m878edm6.jsonl:1:{"id":"e6qaynw3","ts":"2026-08-22T23:03:34Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"item":"k0n64xb4","payload":{"summary":"scope: the LLM game master. Scenario builder (one call at setup producing setting, suspect names and motives, weapon and room descriptions, fixed for the session), event narration (engine tells it what happened, it writes the prose), and in-fiction Q&A for player questions. Prompts NEVER include the case file or another player's hand. Every output is discardable: on empty, malformed, or failed responses the caller falls back to the engine's own plain description. Depends on engine (facts to narrate) and llm-client (transport)."}}
+nahel/journal/archive/session-jzehsd91.jsonl:1:{"id":"b2fs5wxr","ts":"2026-08-22T23:04:12Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"item":"jpgyfzrz","payload":{"summary":"hands-off elaboration proposed for verification: PRODUCT.md (goal quoted verbatim; 13 domain facts, 8 hard constraints, 6 non-goals all marked UNCONFIRMED), CONTEXT.md (17-term glossary), three founding ADRs (deterministic engine vs LLM narrator, OpenAI-compatible client with Poe as configured provider, CLI-first UI), and the nahel/config state the founding wrote (governance product=delegated architecture=human, merge authority=human, routing claude-opus for architecture/implementation/default with codex on review and claude-opus on review2, dispatch invocation for codex, run contract launch/seed/test/healthcheck plus env name POE_API_KEY), plus the decomposition: founding plan item jpgyfzrz, parent feature hcsshz65 murder-mystery-game, and children 0jrmya9a engine, br5phvfw llm-client, k0n64xb4 game-master (depends on engine+llm-client), 6yxb3z7p cli-ui (depends on engine+game-master), cycx4815 e2e (depends on cli-ui).","revision":"eec4f85241a4b5bae11e72731d116000ea68dc93","artifacts":["PRODUCT.md","CONTEXT.md","docs/adr/0001-deterministic-engine-llm-narrator.md","docs/adr/0002-openai-compatible-client.md","docs/adr/0003-cli-first-ui.md","nahel/config","nahel/items/jpgyfzrz.md","nahel/items/hcsshz65.md","nahel/items/0jrmya9a.md","nahel/items/br5phvfw.md","nahel/items/k0n64xb4.md","nahel/items/6yxb3z7p.md","nahel/items/cycx4815.md"],"assumptions":["f6zxpxfe","9r9rr49p","73prbvr4","xm0x0pxz","nag41mqz","jbd9dqqt","zsbqg589","d35b86j0","6tjesyk9","pry47sac"]}}
+nahel/journal/archive/session-kf2trf5w.jsonl:1:{"id":"f6zxpxfe","ts":"2026-08-22T23:03:06Z","seq":0,"type":"note","actor":{"kind":"agent","id":"opus-founder"},"item":"jpgyfzrz","payload":{"summary":"assumption (hands-off, interview would have settled this): LLM auth is a bearer API key, not an OAuth token. The paragraph offers 'api key and endpoint, or oauth token'; I chose the key because Poe accepts a bearer key and OAuth adds a whole consent flow to a terminal game. Risk if wrong: an OAuth-only deployment would need a token-acquisition path added to llm-client."}}
+
+exec
+/bin/zsh -lc "git status --short; git log --oneline --decorate -12; git diff --stat; git diff -- src/llm tests/llm package.json tsconfig.json; sed -n '1,220p' docs/adr/0002-openai-compatible-client.md; sed -n '1,220p' nahel/items/br5phvfw.md; sed -n '1,300p' src/llm/client.ts; sed -n '1,260p' src/llm/config.ts; sed -n '1,220p' src/llm/errors.ts" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ succeeded in 0ms:
+ M nahel/config
+ M nahel/items/0jrmya9a.md
+ M nahel/items/br5phvfw.md
+?? .drive/
+?? nahel/journal/archive/session-7fwdzg2x.jsonl
+?? nahel/journal/archive/session-brfmww2q.jsonl
+?? nahel/journal/archive/session-casgeb77.jsonl
+?? nahel/journal/archive/session-qsxye1qa.jsonl
+?? nahel/journal/archive/session-yhptfv11.jsonl
+?? nahel/journal/run-0mstzvyk.jsonl
+?? nahel/journal/run-a0evcab1.jsonl
+?? nahel/journal/run-e6g6g38j.jsonl
+?? nahel/journal/run-kqrr2q4q.jsonl
+?? nahel/playbooks/
+?? nahel/runs/0mstzvyk/
+?? nahel/runs/a0evcab1/
+?? nahel/runs/e6g6g38j/
+?? nahel/runs/kqrr2q4q/
+?? nahel/workflows/playbook-run.md
+?? src/engine/actions.ts
+?? src/engine/index.ts
+?? src/engine/setup.ts
+?? src/engine/types.ts
+?? src/engine/view.ts
+?? tests/engine/setup.test.ts
+610ec23 (HEAD -> epic/murder-mystery-game) feat(engine): dice-and-corridor board topology with doors and secret passages
+38bdb07 feat(engine): seedable pure RNG and the 21-card Clue deck
+8e5faba fix(llm): key token attribution on the lowercased model id
+ede2e7d test(llm): real in-process vendor server, 28 tests
+5ba2af6 feat(llm): OpenAI-compatible chat client with token accounting
+7124fda chore: minimal Bun/TypeScript scaffolding
+f2b400c (main) chore(nahel): cross-vendor verification disagreed — tier recorded as seed, founding parked
+91a6c51 chore(nahel): hands-off founding state — governance, routing, contract, decomposition
+983a0a6 docs: hands-off founding constitution, glossary, and founding ADRs
+ nahel/config            | 13 +++++++++++++
+ nahel/items/0jrmya9a.md |  4 ++--
+ nahel/items/br5phvfw.md |  4 ++--
+ 3 files changed, 17 insertions(+), 4 deletions(-)
+# ADR-0002 — OpenAI-compatible client, Poe as the configured provider
+
+- **Status:** accepted (founding)
+- **Date:** 2026-08-22
+- **Provenance:** UNCONFIRMED — drafted by `agent:opus-founder` during a hands-off founding. Not human-signed.
+
+## Context
+
+The founding paragraph names the LLM access shape loosely — "api key and
+endpoint, or oauth token" — and adds a purpose beyond play: the project is a
+test that "we are using different agents, llms, etc and that the token cost is
+shared and such". So the client is not incidental plumbing; measuring and
+attributing token cost is part of what the project exists to demonstrate.
+
+Vendor SDKs would each impose their own request shape, auth handling, and
+usage reporting, which is precisely the variance that makes cost comparison
+across providers hard. The OpenAI chat-completions protocol is the common
+denominator that Poe and most other hosts already speak.
+
+## Decision
+
+Write one small HTTP client against the OpenAI-compatible chat-completions
+protocol and nothing else:
+
+- `POST <base>/chat/completions`, `Authorization: Bearer <key>`, body of
+  `{model, messages, ...}`, reply read from `choices[0].message.content`.
+- Base URL and model are configuration, defaulting to
+  `https://api.poe.com/v1`.
+- The key is `POE_API_KEY`, loaded from a gitignored `.env.local`. Never
+  committed, never logged, never placed in nahel state.
+- Every call returns the response's `usage` object alongside the text —
+  `prompt_tokens`, `completion_tokens`, `total_tokens` — and the session sums
+  them. Cost is read from the provider's own numbers, never estimated from
+  string length.
+
+No vendor SDK is taken as a dependency. OAuth-token auth, mentioned in the
+paragraph as an alternative, is out of scope for v1: a bearer key satisfies
+the same header and is what Poe takes.
+
+## Consequences
+
+- Switching provider is a base-URL and model change plus a different key name;
+  no code path is provider-specific.
+- Usage accounting is uniform across providers, which is what makes the
+  "token cost is shared" claim checkable rather than asserted.
+- Provider-specific features (structured outputs, tool calling dialects,
+  streaming extensions) are unavailable unless they are expressible in the
+  common protocol. Given ADR-0001 — the model only narrates — this costs
+  nothing today.
+- A provider that diverges from the protocol is simply unsupported in v1, per
+  the recorded non-goal.
+---
+id: br5phvfw
+name: llm-client
+type: feature
+status: in-progress
+lane: full
+parent: hcsshz65
+depends_on: []
+external_refs: []
+created: 2026-08-22T23:02:20Z
+updated: 2026-08-23T02:49:11Z
+---
+import { loadLlmConfig, type LlmConfig, type LoadLlmConfigOptions } from "./config.ts";
+import {
+  LlmError,
+  LlmHttpError,
+  LlmNetworkError,
+  LlmProtocolError,
+  LlmTimeoutError,
+} from "./errors.ts";
+
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+/** The token figures exactly as the provider reported them. Never estimated. */
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+export interface ChatResult {
+  /** `choices[0].message.content`. */
+  text: string;
+  /** The response's `usage` object, or null when the provider did not report one. */
+  usage: TokenUsage | null;
+  /** The model the response attributed itself to, falling back to the model requested. */
+  model: string;
+}
+
+export type ChatOutcome =
+  | { ok: true; value: ChatResult }
+  | { ok: false; error: LlmError };
+
+export interface ChatOptions {
+  /** Overrides the configured model for this call only. */
+  model?: string;
+  /** Overrides the configured timeout for this call only. */
+  timeoutMs?: number;
+  /** Extra protocol parameters merged into the request body (temperature, max_tokens, stop, ...). */
+  params?: Record<string, unknown>;
+  /** Caller-owned abort signal, honoured alongside the timeout. */
+  signal?: AbortSignal;
+}
+
+export interface ModelUsage {
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+/**
+ * Running total for one client's lifetime — TOKEN-COUNT attribution v1
+ * (orchestrator resolution 5rwbt08h): what is accounted for is token counts per
+ * model, read from each response, not dollar cost.
+ *
+ * `byModel` is keyed by the LOWERCASED model id. Poe matches model ids
+ * case-insensitively and echoes back whatever casing the request used, so
+ * keying on the raw string would silently split one model's tokens across two
+ * buckets and understate its share.
+ */
+export interface SessionUsage {
+  calls: number;
+  callsWithUsage: number;
+  callsWithoutUsage: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  byModel: Record<string, ModelUsage>;
+}
+
+/** The attribution key for a model id: case- and whitespace-insensitive. */
+export function usageKeyFor(model: string): string {
+  return model.trim().toLowerCase();
+}
+
+const BODY_EXCERPT_LIMIT = 500;
+
+/**
+ * An OpenAI-compatible chat-completions client (ADR-0002).
+ *
+ * One transport, no vendor SDK: `POST {baseUrl}/chat/completions` with a bearer
+ * key, a body of `{model, messages, ...params}`, and a reply read from
+ * `choices[0].message.content` plus the response's own `usage` object.
+ */
+export class ChatClient {
+  readonly config: LlmConfig;
+
+  #calls = 0;
+  #callsWithUsage = 0;
+  #promptTokens = 0;
+  #completionTokens = 0;
+  #totalTokens = 0;
+  readonly #byModel = new Map<string, ModelUsage>();
+
+  constructor(config: LlmConfig) {
+    this.config = config;
+  }
+
+  /** The URL every request goes to. */
+  get endpoint(): string {
+    return `${this.config.baseUrl}/chat/completions`;
+  }
+
+  /** A defensive copy of the running token ledger. Mutating it cannot corrupt the client. */
+  get usage(): SessionUsage {
+    const byModel: Record<string, ModelUsage> = {};
+    for (const [model, totals] of this.#byModel) byModel[model] = { ...totals };
+    return {
+      calls: this.#calls,
+      callsWithUsage: this.#callsWithUsage,
+      callsWithoutUsage: this.#calls - this.#callsWithUsage,
+      prompt_tokens: this.#promptTokens,
+      completion_tokens: this.#completionTokens,
+      total_tokens: this.#totalTokens,
+      byModel,
+    };
+  }
+
+  /**
+   * Perform one chat completion. Throws a typed `LlmError` on any failure —
+   * use {@link tryChat} where a failure must degrade rather than propagate.
+   */
+  async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResult> {
+    const model = options.model ?? this.config.model;
+    const timeoutMs = options.timeoutMs ?? this.config.timeoutMs;
+    const body = JSON.stringify({ ...(options.params ?? {}), model, messages });
+
+    const response = await this.#send(body, timeoutMs, options.signal);
+    const raw = await response.text();
+    const result = parseCompletion(raw, this.endpoint, model);
+    this.#account(result);
+    return result;
+  }
+
+  /**
+   * Perform one chat completion, returning a failure instead of throwing.
+   *
+   * PRODUCT.md hard constraint 5: the game stays playable when the model
+   * errors, so the game loop calls this and falls back to plain engine text.
+   */
+  async tryChat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatOutcome> {
+    try {
+      return { ok: true, value: await this.chat(messages, options) };
+    } catch (error) {
+      if (error instanceof LlmError) return { ok: false, error };
+      throw error;
+    }
+  }
+
+  /**
+   * One HTTP exchange, with a single retry on 429/5xx.
+   *
+   * A 4xx other than 429 is the caller's own bug and is never retried; a
+   * timeout is not retried either, because the caller's deadline has already
+   * passed once.
+   */
+  async #send(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      const response = await this.#attempt(body, timeoutMs, callerSignal);
+      if (response.ok) return response;
+
+      const retryable = response.status === 429 || response.status >= 500;
+      const excerpt = excerptOf(await response.text());
+
+      if (retryable && attempt === 0) {
+        await Bun.sleep(this.config.retryBackoffMs);
+        continue;
+      }
+
+      throw new LlmHttpError({
+        status: response.status,
+        statusText: response.statusText,
+        url: this.endpoint,
+        bodyExcerpt: excerpt,
+      });
+    }
+  }
+
+  async #attempt(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
+    const controller = new AbortController();
+    const onCallerAbort = () => controller.abort(callerSignal?.reason);
+    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+
+    try {
+      return await fetch(this.endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.config.apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body,
+        signal: controller.signal,
+      });
+    } catch (cause) {
+      if (timedOut) {
+        throw new LlmTimeoutError({ baseUrl: this.config.baseUrl, timeoutMs });
+      }
+      if (callerSignal?.aborted) throw cause;
+      throw new LlmNetworkError({ baseUrl: this.config.baseUrl, cause });
+    } finally {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+    }
+  }
+
+  #account(result: ChatResult): void {
+    this.#calls += 1;
+    if (result.usage === null) return;
+
+    this.#callsWithUsage += 1;
+    this.#promptTokens += result.usage.prompt_tokens;
+    this.#completionTokens += result.usage.completion_tokens;
+    this.#totalTokens += result.usage.total_tokens;
+
+    const key = usageKeyFor(result.model);
+    const totals = this.#byModel.get(key) ?? {
+      calls: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+    };
+    totals.calls += 1;
+    totals.prompt_tokens += result.usage.prompt_tokens;
+    totals.completion_tokens += result.usage.completion_tokens;
+    totals.total_tokens += result.usage.total_tokens;
+    this.#byModel.set(key, totals);
+  }
+}
+
+/** Build a client straight from the environment and `.env.local`. */
+export function createChatClient(options: LoadLlmConfigOptions = {}): ChatClient {
+  return new ChatClient(loadLlmConfig(options));
+}
+
+/** Read `choices[0].message.content` and the optional `usage` object out of a raw response body. */
+export function parseCompletion(raw: string, url: string, requestedModel: string): ChatResult {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    throw new LlmProtocolError({ url, reason: "response body is not JSON", bodyExcerpt: excerptOf(raw) });
+  }
+
+  if (typeof payload !== "object" || payload === null) {
+    throw new LlmProtocolError({ url, reason: "response body is not an object", bodyExcerpt: excerptOf(raw) });
+  }
+
+  const record = payload as Record<string, unknown>;
+  const choices = record.choices;
+  if (!Array.isArray(choices) || choices.length === 0) {
+    throw new LlmProtocolError({ url, reason: "no choices in response", bodyExcerpt: excerptOf(raw) });
+  }
+
+  const message = (choices[0] as Record<string, unknown> | undefined)?.message as
+    | Record<string, unknown>
+    | undefined;
+  const text = message?.content;
+  if (typeof text !== "string") {
+    throw new LlmProtocolError({
+      url,
+      reason: "choices[0].message.content is not a string",
+      bodyExcerpt: excerptOf(raw),
+    });
+  }
+
+  const model = typeof record.model === "string" && record.model.length > 0 ? record.model : requestedModel;
+
+  return { text, usage: parseUsage(record.usage), model };
+}
+
+/**
+ * Read the provider's `usage` object.
+ *
+ * Absent or unusable usage yields null — tolerated, per ADR-0002, because not
+ * every OpenAI-compatible host reports it. Partial usage is filled with zeros
+ * rather than NaN so the session ledger stays arithmetic.
+ */
+export function parseUsage(value: unknown): TokenUsage | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+
+  const prompt = numberOrNull(record.prompt_tokens);
+  const completion = numberOrNull(record.completion_tokens);
+  const total = numberOrNull(record.total_tokens);
+  if (prompt === null && completion === null && total === null) return null;
+
+  return {
+    prompt_tokens: prompt ?? 0,
+    completion_tokens: completion ?? 0,
+    total_tokens: total ?? 0,
+  };
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { LlmConfigError } from "./errors.ts";
+
+/** Poe's OpenAI-compatible base, per ADR-0002. Swapping providers is a config change, not a code change. */
+export const DEFAULT_BASE_URL = "https://api.poe.com/v1";
+
+/** The key's variable name, per PRODUCT.md hard constraint 2. */
+export const API_KEY_ENV = "POE_API_KEY";
+
+/** The gitignored file the key lives in. */
+export const ENV_FILE_NAME = ".env.local";
+
+/**
+ * Default model, verified present in `GET https://api.poe.com/v1/models`
+ * (2026-08-23). Poe's ids are lowercase-hyphenated and it matches them
+ * case-insensitively. Overridable via POE_MODEL or per call.
+ */
+export const DEFAULT_MODEL = "claude-sonnet-4.5";
+
+export const DEFAULT_TIMEOUT_MS = 60_000;
+
+/** Delay before the single permitted retry on 429/5xx. */
+export const DEFAULT_RETRY_BACKOFF_MS = 500;
+
+export const BASE_URL_ENV = "POE_BASE_URL";
+export const MODEL_ENV = "POE_MODEL";
+
+export interface LlmConfig {
+  /** Base URL with no trailing slash; "/chat/completions" is appended to it. */
+  readonly baseUrl: string;
+  readonly apiKey: string;
+  readonly model: string;
+  readonly timeoutMs: number;
+  readonly retryBackoffMs: number;
+}
+
+export interface LoadLlmConfigOptions {
+  /** Environment record to read. Defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
+  /** Path to the dotenv file used as a fallback. Defaults to `.env.local` in the current working directory. */
+  envFilePath?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+  timeoutMs?: number;
+  retryBackoffMs?: number;
+}
+
+/**
+ * Parse a dotenv-style file into a record.
+ *
+ * This exists because Bun's automatic `.env.local` loading is NOT active when
+ * `NODE_ENV=test` — which is exactly what `bun test` sets. Relying on the
+ * runtime alone would leave the client silently keyless under test. A missing
+ * file is not an error; it just yields no values.
+ */
+export function readEnvFile(path: string): Record<string, string> {
+  let contents: string;
+  try {
+    contents = readFileSync(path, "utf8");
+  } catch {
+    return {};
+  }
+
+  const values: Record<string, string> = {};
+  for (const rawLine of contents.split("\n")) {
+    const line = rawLine.trim();
+    if (line.length === 0 || line.startsWith("#")) continue;
+
+    const separator = line.indexOf("=");
+    if (separator <= 0) continue;
+
+    const key = line.slice(0, separator).trim();
+    if (key.length === 0) continue;
+
+    let value = line.slice(separator + 1).trim();
+    if (value.length >= 2) {
+      const first = value[0];
+      const last = value[value.length - 1];
+      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+        value = value.slice(1, -1);
+      }
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+/**
+ * Resolve the client's configuration.
+ *
+ * Precedence for every value: explicit option, then the environment, then the
+ * dotenv file, then the built-in default. A missing key is fatal and names both
+ * the variable and the file so the failure is self-explanatory. The key itself
+ * is never written to a log, a message, or nahel state.
+ */
+export function loadLlmConfig(options: LoadLlmConfigOptions = {}): LlmConfig {
+  const env = options.env ?? (process.env as Record<string, string | undefined>);
+  const envFilePath = options.envFilePath ?? resolve(process.cwd(), ENV_FILE_NAME);
+  const fileEnv = readEnvFile(envFilePath);
+
+  const pick = (name: string): string | undefined => {
+    const fromEnv = env[name];
+    if (isPresent(fromEnv)) return fromEnv.trim();
+    const fromFile = fileEnv[name];
+    if (isPresent(fromFile)) return fromFile.trim();
+    return undefined;
+  };
+
+  const apiKey = isPresent(options.apiKey) ? options.apiKey.trim() : pick(API_KEY_ENV);
+  if (apiKey === undefined) {
+    throw new LlmConfigError(
+      `Missing ${API_KEY_ENV}. Set it in the gitignored ${ENV_FILE_NAME} at the repository root ` +
+        `(as ${API_KEY_ENV}=<your key>) or export it in the environment. ` +
+        `Note that Bun does not auto-load ${ENV_FILE_NAME} when NODE_ENV=test.`,
+    );
+  }
+
+  const baseUrl = stripTrailingSlash(options.baseUrl ?? pick(BASE_URL_ENV) ?? DEFAULT_BASE_URL);
+  const model = options.model ?? pick(MODEL_ENV) ?? DEFAULT_MODEL;
+
+  return {
+    baseUrl,
+    apiKey,
+    model,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    retryBackoffMs: options.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS,
+  };
+}
+
+function isPresent(value: string | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function stripTrailingSlash(url: string): string {
+  return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+/**
+ * Typed failures from the LLM transport.
+ *
+ * Every one of these is a `LlmError`, so a caller that only wants to degrade
+ * gracefully can catch the base class. Per PRODUCT.md hard constraint 5 the
+ * game must remain playable when the model is unreachable, so these carry
+ * enough detail to report a failure without being fatal.
+ *
+ * No error ever embeds the API key: messages are built from the URL, the
+ * status, and the vendor's own response body.
+ */
+export abstract class LlmError extends Error {
+  protected constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options as ErrorOptions);
+    this.name = new.target.name;
+  }
+}
+
+/** Configuration is unusable — most commonly, no API key was found. */
+export class LlmConfigError extends LlmError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/** The vendor answered with a non-2xx status. */
+export class LlmHttpError extends LlmError {
+  readonly status: number;
+  readonly url: string;
+  /** First slice of the response body, for diagnosis. Truncated, never parsed for control flow. */
+  readonly bodyExcerpt: string;
+
+  constructor(args: { status: number; statusText: string; url: string; bodyExcerpt: string }) {
+    super(
+      `LLM request to ${args.url} failed with HTTP ${args.status}${
+        args.statusText ? ` ${args.statusText}` : ""
+      }: ${args.bodyExcerpt || "<empty body>"}`,
+    );
+    this.status = args.status;
+    this.url = args.url;
+    this.bodyExcerpt = args.bodyExcerpt;
+  }
+}
+
+/** The request never reached the vendor (DNS, refused connection, TLS, socket reset). */
+export class LlmNetworkError extends LlmError {
+  readonly baseUrl: string;
+
+  constructor(args: { baseUrl: string; cause: unknown }) {
+    super(
+      `LLM request to ${args.baseUrl} failed before a response was received: ${describe(args.cause)}`,
+      { cause: args.cause },
+    );
+    this.baseUrl = args.baseUrl;
+  }
+}
+
+/** The request was aborted because it exceeded the configured timeout. */
+export class LlmTimeoutError extends LlmError {
+  readonly baseUrl: string;
+  readonly timeoutMs: number;
+
+  constructor(args: { baseUrl: string; timeoutMs: number }) {
+    super(`LLM request to ${args.baseUrl} timed out after ${args.timeoutMs}ms`);
+    this.baseUrl = args.baseUrl;
+    this.timeoutMs = args.timeoutMs;
+  }
+}
+
+/** A 2xx response that does not speak the OpenAI-compatible shape. */
+export class LlmProtocolError extends LlmError {
+  readonly url: string;
+  readonly bodyExcerpt: string;
+
+  constructor(args: { url: string; reason: string; bodyExcerpt: string }) {
+    super(
+      `LLM response from ${args.url} is not OpenAI-compatible (${args.reason}): ${
+        args.bodyExcerpt || "<empty body>"
+      }`,
+    );
+    this.url = args.url;
+    this.bodyExcerpt = args.bodyExcerpt;
+  }
+}
+
+function describe(cause: unknown): string {
+  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
+  return String(cause);
+}
+
+2026-08-23T03:03:37.756108Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
+exec
+/bin/zsh -lc "nl -ba src/llm/client.ts | sed -n '1,380p'; nl -ba src/llm/config.ts | sed -n '1,300p'; nl -ba tests/llm/client.test.ts | sed -n '1,420p'; nl -ba tests/llm/config.test.ts | sed -n '1,320p'; nl -ba tests/llm/fake-vendor.ts | sed -n '1,320p'; git diff f2b400c...HEAD -- src/llm tests/llm package.json tsconfig.json --stat; git log f2b400c..HEAD --oneline" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ succeeded in 0ms:
+     1	import { loadLlmConfig, type LlmConfig, type LoadLlmConfigOptions } from "./config.ts";
+     2	import {
+     3	  LlmError,
+     4	  LlmHttpError,
+     5	  LlmNetworkError,
+     6	  LlmProtocolError,
+     7	  LlmTimeoutError,
+     8	} from "./errors.ts";
+     9	
+    10	export interface ChatMessage {
+    11	  role: "system" | "user" | "assistant";
+    12	  content: string;
+    13	}
+    14	
+    15	/** The token figures exactly as the provider reported them. Never estimated. */
+    16	export interface TokenUsage {
+    17	  prompt_tokens: number;
+    18	  completion_tokens: number;
+    19	  total_tokens: number;
+    20	}
+    21	
+    22	export interface ChatResult {
+    23	  /** `choices[0].message.content`. */
+    24	  text: string;
+    25	  /** The response's `usage` object, or null when the provider did not report one. */
+    26	  usage: TokenUsage | null;
+    27	  /** The model the response attributed itself to, falling back to the model requested. */
+    28	  model: string;
+    29	}
+    30	
+    31	export type ChatOutcome =
+    32	  | { ok: true; value: ChatResult }
+    33	  | { ok: false; error: LlmError };
+    34	
+    35	export interface ChatOptions {
+    36	  /** Overrides the configured model for this call only. */
+    37	  model?: string;
+    38	  /** Overrides the configured timeout for this call only. */
+    39	  timeoutMs?: number;
+    40	  /** Extra protocol parameters merged into the request body (temperature, max_tokens, stop, ...). */
+    41	  params?: Record<string, unknown>;
+    42	  /** Caller-owned abort signal, honoured alongside the timeout. */
+    43	  signal?: AbortSignal;
+    44	}
+    45	
+    46	export interface ModelUsage {
+    47	  calls: number;
+    48	  prompt_tokens: number;
+    49	  completion_tokens: number;
+    50	  total_tokens: number;
+    51	}
+    52	
+    53	/**
+    54	 * Running total for one client's lifetime — TOKEN-COUNT attribution v1
+    55	 * (orchestrator resolution 5rwbt08h): what is accounted for is token counts per
+    56	 * model, read from each response, not dollar cost.
+    57	 *
+    58	 * `byModel` is keyed by the LOWERCASED model id. Poe matches model ids
+    59	 * case-insensitively and echoes back whatever casing the request used, so
+    60	 * keying on the raw string would silently split one model's tokens across two
+    61	 * buckets and understate its share.
+    62	 */
+    63	export interface SessionUsage {
+    64	  calls: number;
+    65	  callsWithUsage: number;
+    66	  callsWithoutUsage: number;
+    67	  prompt_tokens: number;
+    68	  completion_tokens: number;
+    69	  total_tokens: number;
+    70	  byModel: Record<string, ModelUsage>;
+    71	}
+    72	
+    73	/** The attribution key for a model id: case- and whitespace-insensitive. */
+    74	export function usageKeyFor(model: string): string {
+    75	  return model.trim().toLowerCase();
+    76	}
+    77	
+    78	const BODY_EXCERPT_LIMIT = 500;
+    79	
+    80	/**
+    81	 * An OpenAI-compatible chat-completions client (ADR-0002).
+    82	 *
+    83	 * One transport, no vendor SDK: `POST {baseUrl}/chat/completions` with a bearer
+    84	 * key, a body of `{model, messages, ...params}`, and a reply read from
+    85	 * `choices[0].message.content` plus the response's own `usage` object.
+    86	 */
+    87	export class ChatClient {
+    88	  readonly config: LlmConfig;
+    89	
+    90	  #calls = 0;
+    91	  #callsWithUsage = 0;
+    92	  #promptTokens = 0;
+    93	  #completionTokens = 0;
+    94	  #totalTokens = 0;
+    95	  readonly #byModel = new Map<string, ModelUsage>();
+    96	
+    97	  constructor(config: LlmConfig) {
+    98	    this.config = config;
+    99	  }
+   100	
+   101	  /** The URL every request goes to. */
+   102	  get endpoint(): string {
+   103	    return `${this.config.baseUrl}/chat/completions`;
+   104	  }
+   105	
+   106	  /** A defensive copy of the running token ledger. Mutating it cannot corrupt the client. */
+   107	  get usage(): SessionUsage {
+   108	    const byModel: Record<string, ModelUsage> = {};
+   109	    for (const [model, totals] of this.#byModel) byModel[model] = { ...totals };
+   110	    return {
+   111	      calls: this.#calls,
+   112	      callsWithUsage: this.#callsWithUsage,
+   113	      callsWithoutUsage: this.#calls - this.#callsWithUsage,
+   114	      prompt_tokens: this.#promptTokens,
+   115	      completion_tokens: this.#completionTokens,
+   116	      total_tokens: this.#totalTokens,
+   117	      byModel,
+   118	    };
+   119	  }
+   120	
+   121	  /**
+   122	   * Perform one chat completion. Throws a typed `LlmError` on any failure —
+   123	   * use {@link tryChat} where a failure must degrade rather than propagate.
+   124	   */
+   125	  async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResult> {
+   126	    const model = options.model ?? this.config.model;
+   127	    const timeoutMs = options.timeoutMs ?? this.config.timeoutMs;
+   128	    const body = JSON.stringify({ ...(options.params ?? {}), model, messages });
+   129	
+   130	    const response = await this.#send(body, timeoutMs, options.signal);
+   131	    const raw = await response.text();
+   132	    const result = parseCompletion(raw, this.endpoint, model);
+   133	    this.#account(result);
+   134	    return result;
+   135	  }
+   136	
+   137	  /**
+   138	   * Perform one chat completion, returning a failure instead of throwing.
+   139	   *
+   140	   * PRODUCT.md hard constraint 5: the game stays playable when the model
+   141	   * errors, so the game loop calls this and falls back to plain engine text.
+   142	   */
+   143	  async tryChat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatOutcome> {
+   144	    try {
+   145	      return { ok: true, value: await this.chat(messages, options) };
+   146	    } catch (error) {
+   147	      if (error instanceof LlmError) return { ok: false, error };
+   148	      throw error;
+   149	    }
+   150	  }
+   151	
+   152	  /**
+   153	   * One HTTP exchange, with a single retry on 429/5xx.
+   154	   *
+   155	   * A 4xx other than 429 is the caller's own bug and is never retried; a
+   156	   * timeout is not retried either, because the caller's deadline has already
+   157	   * passed once.
+   158	   */
+   159	  async #send(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
+   160	    for (let attempt = 0; ; attempt++) {
+   161	      const response = await this.#attempt(body, timeoutMs, callerSignal);
+   162	      if (response.ok) return response;
+   163	
+   164	      const retryable = response.status === 429 || response.status >= 500;
+   165	      const excerpt = excerptOf(await response.text());
+   166	
+   167	      if (retryable && attempt === 0) {
+   168	        await Bun.sleep(this.config.retryBackoffMs);
+   169	        continue;
+   170	      }
+   171	
+   172	      throw new LlmHttpError({
+   173	        status: response.status,
+   174	        statusText: response.statusText,
+   175	        url: this.endpoint,
+   176	        bodyExcerpt: excerpt,
+   177	      });
+   178	    }
+   179	  }
+   180	
+   181	  async #attempt(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
+   182	    const controller = new AbortController();
+   183	    const onCallerAbort = () => controller.abort(callerSignal?.reason);
+   184	    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+   185	
+   186	    let timedOut = false;
+   187	    const timer = setTimeout(() => {
+   188	      timedOut = true;
+   189	      controller.abort();
+   190	    }, timeoutMs);
+   191	
+   192	    try {
+   193	      return await fetch(this.endpoint, {
+   194	        method: "POST",
+   195	        headers: {
+   196	          Authorization: `Bearer ${this.config.apiKey}`,
+   197	          "Content-Type": "application/json",
+   198	          Accept: "application/json",
+   199	        },
+   200	        body,
+   201	        signal: controller.signal,
+   202	      });
+   203	    } catch (cause) {
+   204	      if (timedOut) {
+   205	        throw new LlmTimeoutError({ baseUrl: this.config.baseUrl, timeoutMs });
+   206	      }
+   207	      if (callerSignal?.aborted) throw cause;
+   208	      throw new LlmNetworkError({ baseUrl: this.config.baseUrl, cause });
+   209	    } finally {
+   210	      clearTimeout(timer);
+   211	      callerSignal?.removeEventListener("abort", onCallerAbort);
+   212	    }
+   213	  }
+   214	
+   215	  #account(result: ChatResult): void {
+   216	    this.#calls += 1;
+   217	    if (result.usage === null) return;
+   218	
+   219	    this.#callsWithUsage += 1;
+   220	    this.#promptTokens += result.usage.prompt_tokens;
+   221	    this.#completionTokens += result.usage.completion_tokens;
+   222	    this.#totalTokens += result.usage.total_tokens;
+   223	
+   224	    const key = usageKeyFor(result.model);
+   225	    const totals = this.#byModel.get(key) ?? {
+   226	      calls: 0,
+   227	      prompt_tokens: 0,
+   228	      completion_tokens: 0,
+   229	      total_tokens: 0,
+   230	    };
+   231	    totals.calls += 1;
+   232	    totals.prompt_tokens += result.usage.prompt_tokens;
+   233	    totals.completion_tokens += result.usage.completion_tokens;
+   234	    totals.total_tokens += result.usage.total_tokens;
+   235	    this.#byModel.set(key, totals);
+   236	  }
+   237	}
+   238	
+   239	/** Build a client straight from the environment and `.env.local`. */
+   240	export function createChatClient(options: LoadLlmConfigOptions = {}): ChatClient {
+   241	  return new ChatClient(loadLlmConfig(options));
+   242	}
+   243	
+   244	/** Read `choices[0].message.content` and the optional `usage` object out of a raw response body. */
+   245	export function parseCompletion(raw: string, url: string, requestedModel: string): ChatResult {
+   246	  let payload: unknown;
+   247	  try {
+   248	    payload = JSON.parse(raw);
+   249	  } catch {
+   250	    throw new LlmProtocolError({ url, reason: "response body is not JSON", bodyExcerpt: excerptOf(raw) });
+   251	  }
+   252	
+   253	  if (typeof payload !== "object" || payload === null) {
+   254	    throw new LlmProtocolError({ url, reason: "response body is not an object", bodyExcerpt: excerptOf(raw) });
+   255	  }
+   256	
+   257	  const record = payload as Record<string, unknown>;
+   258	  const choices = record.choices;
+   259	  if (!Array.isArray(choices) || choices.length === 0) {
+   260	    throw new LlmProtocolError({ url, reason: "no choices in response", bodyExcerpt: excerptOf(raw) });
+   261	  }
+   262	
+   263	  const message = (choices[0] as Record<string, unknown> | undefined)?.message as
+   264	    | Record<string, unknown>
+   265	    | undefined;
+   266	  const text = message?.content;
+   267	  if (typeof text !== "string") {
+   268	    throw new LlmProtocolError({
+   269	      url,
+   270	      reason: "choices[0].message.content is not a string",
+   271	      bodyExcerpt: excerptOf(raw),
+   272	    });
+   273	  }
+   274	
+   275	  const model = typeof record.model === "string" && record.model.length > 0 ? record.model : requestedModel;
+   276	
+   277	  return { text, usage: parseUsage(record.usage), model };
+   278	}
+   279	
+   280	/**
+   281	 * Read the provider's `usage` object.
+   282	 *
+   283	 * Absent or unusable usage yields null — tolerated, per ADR-0002, because not
+   284	 * every OpenAI-compatible host reports it. Partial usage is filled with zeros
+   285	 * rather than NaN so the session ledger stays arithmetic.
+   286	 */
+   287	export function parseUsage(value: unknown): TokenUsage | null {
+   288	  if (typeof value !== "object" || value === null) return null;
+   289	  const record = value as Record<string, unknown>;
+   290	
+   291	  const prompt = numberOrNull(record.prompt_tokens);
+   292	  const completion = numberOrNull(record.completion_tokens);
+   293	  const total = numberOrNull(record.total_tokens);
+   294	  if (prompt === null && completion === null && total === null) return null;
+   295	
+   296	  return {
+   297	    prompt_tokens: prompt ?? 0,
+   298	    completion_tokens: completion ?? 0,
+   299	    total_tokens: total ?? 0,
+   300	  };
+   301	}
+   302	
+   303	function numberOrNull(value: unknown): number | null {
+   304	  return typeof value === "number" && Number.isFinite(value) ? value : null;
+   305	}
+   306	
+   307	function excerptOf(body: string): string {
+   308	  const trimmed = body.trim();
+   309	  return trimmed.length > BODY_EXCERPT_LIMIT
+   310	    ? `${trimmed.slice(0, BODY_EXCERPT_LIMIT)}… (truncated)`
+   311	    : trimmed;
+   312	}
+     1	import { readFileSync } from "node:fs";
+     2	import { resolve } from "node:path";
+     3	
+     4	import { LlmConfigError } from "./errors.ts";
+     5	
+     6	/** Poe's OpenAI-compatible base, per ADR-0002. Swapping providers is a config change, not a code change. */
+     7	export const DEFAULT_BASE_URL = "https://api.poe.com/v1";
+     8	
+     9	/** The key's variable name, per PRODUCT.md hard constraint 2. */
+    10	export const API_KEY_ENV = "POE_API_KEY";
+    11	
+    12	/** The gitignored file the key lives in. */
+    13	export const ENV_FILE_NAME = ".env.local";
+    14	
+    15	/**
+    16	 * Default model, verified present in `GET https://api.poe.com/v1/models`
+    17	 * (2026-08-23). Poe's ids are lowercase-hyphenated and it matches them
+    18	 * case-insensitively. Overridable via POE_MODEL or per call.
+    19	 */
+    20	export const DEFAULT_MODEL = "claude-sonnet-4.5";
+    21	
+    22	export const DEFAULT_TIMEOUT_MS = 60_000;
+    23	
+    24	/** Delay before the single permitted retry on 429/5xx. */
+    25	export const DEFAULT_RETRY_BACKOFF_MS = 500;
+    26	
+    27	export const BASE_URL_ENV = "POE_BASE_URL";
+    28	export const MODEL_ENV = "POE_MODEL";
+    29	
+    30	export interface LlmConfig {
+    31	  /** Base URL with no trailing slash; "/chat/completions" is appended to it. */
+    32	  readonly baseUrl: string;
+    33	  readonly apiKey: string;
+    34	  readonly model: string;
+    35	  readonly timeoutMs: number;
+    36	  readonly retryBackoffMs: number;
+    37	}
+    38	
+    39	export interface LoadLlmConfigOptions {
+    40	  /** Environment record to read. Defaults to `process.env`. */
+    41	  env?: Record<string, string | undefined>;
+    42	  /** Path to the dotenv file used as a fallback. Defaults to `.env.local` in the current working directory. */
+    43	  envFilePath?: string;
+    44	  apiKey?: string;
+    45	  baseUrl?: string;
+    46	  model?: string;
+    47	  timeoutMs?: number;
+    48	  retryBackoffMs?: number;
+    49	}
+    50	
+    51	/**
+    52	 * Parse a dotenv-style file into a record.
+    53	 *
+    54	 * This exists because Bun's automatic `.env.local` loading is NOT active when
+    55	 * `NODE_ENV=test` — which is exactly what `bun test` sets. Relying on the
+    56	 * runtime alone would leave the client silently keyless under test. A missing
+    57	 * file is not an error; it just yields no values.
+    58	 */
+    59	export function readEnvFile(path: string): Record<string, string> {
+    60	  let contents: string;
+    61	  try {
+    62	    contents = readFileSync(path, "utf8");
+    63	  } catch {
+    64	    return {};
+    65	  }
+    66	
+    67	  const values: Record<string, string> = {};
+    68	  for (const rawLine of contents.split("\n")) {
+    69	    const line = rawLine.trim();
+    70	    if (line.length === 0 || line.startsWith("#")) continue;
+    71	
+    72	    const separator = line.indexOf("=");
+    73	    if (separator <= 0) continue;
+    74	
+    75	    const key = line.slice(0, separator).trim();
+    76	    if (key.length === 0) continue;
+    77	
+    78	    let value = line.slice(separator + 1).trim();
+    79	    if (value.length >= 2) {
+    80	      const first = value[0];
+    81	      const last = value[value.length - 1];
+    82	      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    83	        value = value.slice(1, -1);
+    84	      }
+    85	    }
+    86	    values[key] = value;
+    87	  }
+    88	  return values;
+    89	}
+    90	
+    91	/**
+    92	 * Resolve the client's configuration.
+    93	 *
+    94	 * Precedence for every value: explicit option, then the environment, then the
+    95	 * dotenv file, then the built-in default. A missing key is fatal and names both
+    96	 * the variable and the file so the failure is self-explanatory. The key itself
+    97	 * is never written to a log, a message, or nahel state.
+    98	 */
+    99	export function loadLlmConfig(options: LoadLlmConfigOptions = {}): LlmConfig {
+   100	  const env = options.env ?? (process.env as Record<string, string | undefined>);
+   101	  const envFilePath = options.envFilePath ?? resolve(process.cwd(), ENV_FILE_NAME);
+   102	  const fileEnv = readEnvFile(envFilePath);
+   103	
+   104	  const pick = (name: string): string | undefined => {
+   105	    const fromEnv = env[name];
+   106	    if (isPresent(fromEnv)) return fromEnv.trim();
+   107	    const fromFile = fileEnv[name];
+   108	    if (isPresent(fromFile)) return fromFile.trim();
+   109	    return undefined;
+   110	  };
+   111	
+   112	  const apiKey = isPresent(options.apiKey) ? options.apiKey.trim() : pick(API_KEY_ENV);
+   113	  if (apiKey === undefined) {
+   114	    throw new LlmConfigError(
+   115	      `Missing ${API_KEY_ENV}. Set it in the gitignored ${ENV_FILE_NAME} at the repository root ` +
+   116	        `(as ${API_KEY_ENV}=<your key>) or export it in the environment. ` +
+   117	        `Note that Bun does not auto-load ${ENV_FILE_NAME} when NODE_ENV=test.`,
+   118	    );
+   119	  }
+   120	
+   121	  const baseUrl = stripTrailingSlash(options.baseUrl ?? pick(BASE_URL_ENV) ?? DEFAULT_BASE_URL);
+   122	  const model = options.model ?? pick(MODEL_ENV) ?? DEFAULT_MODEL;
+   123	
+   124	  return {
+   125	    baseUrl,
+   126	    apiKey,
+   127	    model,
+   128	    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+   129	    retryBackoffMs: options.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS,
+   130	  };
+   131	}
+   132	
+   133	function isPresent(value: string | undefined): value is string {
+   134	  return typeof value === "string" && value.trim().length > 0;
+   135	}
+   136	
+   137	function stripTrailingSlash(url: string): string {
+   138	  return url.endsWith("/") ? url.slice(0, -1) : url;
+   139	}
+     1	import { describe, expect, test } from "bun:test";
+     2	
+     3	import { ChatClient } from "../../src/llm/client.ts";
+     4	import {
+     5	  LlmHttpError,
+     6	  LlmNetworkError,
+     7	  LlmProtocolError,
+     8	  LlmTimeoutError,
+     9	} from "../../src/llm/errors.ts";
+    10	import { loadLlmConfig } from "../../src/llm/config.ts";
+    11	import {
+    12	  completionResponse,
+    13	  deadBaseUrl,
+    14	  errorResponse,
+    15	  startFakeVendor,
+    16	} from "./fake-vendor.ts";
+    17	
+    18	const TEST_KEY = "test-key-do-not-log";
+    19	
+    20	/** Build a client pointed at a fake vendor, with test-fast timings. */
+    21	function clientFor(
+    22	  baseUrl: string,
+    23	  overrides: { timeoutMs?: number; retryBackoffMs?: number; model?: string } = {},
+    24	): ChatClient {
+    25	  return new ChatClient(
+    26	    loadLlmConfig({
+    27	      env: {},
+    28	      envFilePath: "/nonexistent/.env.local",
+    29	      apiKey: TEST_KEY,
+    30	      baseUrl,
+    31	      model: overrides.model ?? "Test-Model",
+    32	      timeoutMs: overrides.timeoutMs ?? 5_000,
+    33	      retryBackoffMs: overrides.retryBackoffMs ?? 20,
+    34	    }),
+    35	  );
+    36	}
+    37	
+    38	describe("ChatClient — happy path", () => {
+    39	  test("posts the OpenAI-compatible request and returns text plus the usage figures verbatim", async () => {
+    40	    const vendor = startFakeVendor(() =>
+    41	      completionResponse({
+    42	        content: "The body was found in the conservatory.",
+    43	        model: "Vendor-Reported-Model",
+    44	        usage: { prompt_tokens: 41, completion_tokens: 12, total_tokens: 53 },
+    45	      }),
+    46	    );
+    47	
+    48	    try {
+    49	      const client = clientFor(vendor.baseUrl);
+    50	      const result = await client.chat(
+    51	        [
+    52	          { role: "system", content: "You are the game master." },
+    53	          { role: "user", content: "Describe the scene." },
+    54	        ],
+    55	        { params: { temperature: 0.4, max_tokens: 200 } },
+    56	      );
+    57	
+    58	      const request = vendor.requests[0]!;
+    59	      console.log("[happy path] request ->", {
+    60	        method: request.method,
+    61	        path: request.path,
+    62	        authorization: request.authorization,
+    63	        contentType: request.contentType,
+    64	        body: request.body,
+    65	      });
+    66	      console.log("[happy path] result ->", result);
+    67	
+    68	      // Wire shape, per ADR-0002.
+    69	      expect(vendor.requests).toHaveLength(1);
+    70	      expect(request.method).toBe("POST");
+    71	      expect(request.path).toBe("/v1/chat/completions");
+    72	      expect(request.authorization).toBe(`Bearer ${TEST_KEY}`);
+    73	      expect(request.contentType).toContain("application/json");
+    74	      expect(request.body.model).toBe("Test-Model");
+    75	      expect(request.body.messages).toEqual([
+    76	        { role: "system", content: "You are the game master." },
+    77	        { role: "user", content: "Describe the scene." },
+    78	      ]);
+    79	      expect(request.body.temperature).toBe(0.4);
+    80	      expect(request.body.max_tokens).toBe(200);
+    81	
+    82	      // Reply shape.
+    83	      expect(result.text).toBe("The body was found in the conservatory.");
+    84	      expect(result.model).toBe("Vendor-Reported-Model");
+    85	      expect(result.usage).toEqual({
+    86	        prompt_tokens: 41,
+    87	        completion_tokens: 12,
+    88	        total_tokens: 53,
+    89	      });
+    90	    } finally {
+    91	      await vendor.stop();
+    92	    }
+    93	  });
+    94	
+    95	  test("a per-call model override is what actually goes on the wire", async () => {
+    96	    const vendor = startFakeVendor(() => completionResponse({ content: "ok" }));
+    97	    try {
+    98	      const client = clientFor(vendor.baseUrl, { model: "Config-Model" });
+    99	      await client.chat([{ role: "user", content: "hi" }], { model: "Override-Model" });
+   100	      console.log("[model override] body.model ->", vendor.requests[0]!.body.model);
+   101	      expect(vendor.requests[0]!.body.model).toBe("Override-Model");
+   102	    } finally {
+   103	      await vendor.stop();
+   104	    }
+   105	  });
+   106	});
+   107	
+   108	describe("ChatClient — token accounting", () => {
+   109	  test("a provider that omits usage is tolerated: usage is null and the call still returns text", async () => {
+   110	    const vendor = startFakeVendor(() =>
+   111	      completionResponse({ content: "No usage reported here.", usage: null }),
+   112	    );
+   113	
+   114	    try {
+   115	      const client = clientFor(vendor.baseUrl);
+   116	      const result = await client.chat([{ role: "user", content: "hi" }]);
+   117	      console.log("[missing usage] result ->", result, "session ->", client.usage);
+   118	
+   119	      expect(result.text).toBe("No usage reported here.");
+   120	      expect(result.usage).toBeNull();
+   121	
+   122	      const session = client.usage;
+   123	      expect(session.calls).toBe(1);
+   124	      expect(session.callsWithUsage).toBe(0);
+   125	      expect(session.callsWithoutUsage).toBe(1);
+   126	      expect(session.total_tokens).toBe(0);
+   127	    } finally {
+   128	      await vendor.stop();
+   129	    }
+   130	  });
+   131	
+   132	  test("a partial usage object is filled with zeros rather than NaN", async () => {
+   133	    const vendor = startFakeVendor(() =>
+   134	      completionResponse({ content: "partial", usage: { total_tokens: 9 } }),
+   135	    );
+   136	    try {
+   137	      const client = clientFor(vendor.baseUrl);
+   138	      const result = await client.chat([{ role: "user", content: "hi" }]);
+   139	      console.log("[partial usage] ->", result.usage);
+   140	      expect(result.usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 9 });
+   141	      expect(client.usage.callsWithUsage).toBe(1);
+   142	    } finally {
+   143	      await vendor.stop();
+   144	    }
+   145	  });
+   146	
+   147	  test("session usage sums across calls and attributes per model — TOKEN-COUNT attribution v1", async () => {
+   148	    const vendor = startFakeVendor((_request, index) =>
+   149	      completionResponse({
+   150	        content: `reply ${index}`,
+   151	        model: index === 0 ? "Model-A" : "Model-B",
+   152	        usage: { prompt_tokens: 10 + index, completion_tokens: 5, total_tokens: 15 + index },
+   153	      }),
+   154	    );
+   155	
+   156	    try {
+   157	      const client = clientFor(vendor.baseUrl);
+   158	      await client.chat([{ role: "user", content: "one" }]);
+   159	      await client.chat([{ role: "user", content: "two" }]);
+   160	      await client.chat([{ role: "user", content: "three" }]);
+   161	
+   162	      const session = client.usage;
+   163	      console.log("[session usage] ->", JSON.stringify(session, null, 2));
+   164	
+   165	      expect(session.calls).toBe(3);
+   166	      expect(session.callsWithUsage).toBe(3);
+   167	      expect(session.prompt_tokens).toBe(10 + 11 + 12);
+   168	      expect(session.completion_tokens).toBe(15);
+   169	      expect(session.total_tokens).toBe(15 + 16 + 17);
+   170	
+   171	      expect(session.byModel["model-a"]).toEqual({
+   172	        calls: 1,
+   173	        prompt_tokens: 10,
+   174	        completion_tokens: 5,
+   175	        total_tokens: 15,
+   176	      });
+   177	      expect(session.byModel["model-b"]).toEqual({
+   178	        calls: 2,
+   179	        prompt_tokens: 23,
+   180	        completion_tokens: 10,
+   181	        total_tokens: 33,
+   182	      });
+   183	    } finally {
+   184	      await vendor.stop();
+   185	    }
+   186	  });
+   187	
+   188	  test("attribution is case-insensitive: one model reported in two casings is one bucket", async () => {
+   189	    // Poe matches model ids case-insensitively and echoes back whatever casing
+   190	    // the caller sent, so keying the ledger on the raw string would split one
+   191	    // model's tokens in two and understate its share.
+   192	    const vendor = startFakeVendor((_request, index) =>
+   193	      completionResponse({
+   194	        content: "x",
+   195	        model: index === 0 ? "Claude-Sonnet-4.5" : "claude-sonnet-4.5",
+   196	        usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+   197	      }),
+   198	    );
+   199	
+   200	    try {
+   201	      const client = clientFor(vendor.baseUrl);
+   202	      await client.chat([{ role: "user", content: "one" }]);
+   203	      await client.chat([{ role: "user", content: "two" }]);
+   204	
+   205	      const session = client.usage;
+   206	      console.log("[case-insensitive attribution] byModel ->", session.byModel);
+   207	
+   208	      expect(Object.keys(session.byModel)).toEqual(["claude-sonnet-4.5"]);
+   209	      expect(session.byModel["claude-sonnet-4.5"]).toEqual({
+   210	        calls: 2,
+   211	        prompt_tokens: 200,
+   212	        completion_tokens: 20,
+   213	        total_tokens: 220,
+   214	      });
+   215	    } finally {
+   216	      await vendor.stop();
+   217	    }
+   218	  });
+   219	
+   220	  test("the usage snapshot is a copy — mutating it cannot corrupt the client's ledger", async () => {
+   221	    const vendor = startFakeVendor(() =>
+   222	      completionResponse({
+   223	        content: "x",
+   224	        model: "Model-A",
+   225	        usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
+   226	      }),
+   227	    );
+   228	    try {
+   229	      const client = clientFor(vendor.baseUrl);
+   230	      await client.chat([{ role: "user", content: "hi" }]);
+   231	      const snapshot = client.usage;
+   232	      snapshot.total_tokens = 99_999;
+   233	      snapshot.byModel["model-a"]!.total_tokens = 99_999;
+   234	      console.log("[snapshot isolation] after mutation, client sees ->", client.usage);
+   235	      expect(client.usage.total_tokens).toBe(7);
+   236	      expect(client.usage.byModel["model-a"]!.total_tokens).toBe(7);
+   237	    } finally {
+   238	      await vendor.stop();
+   239	    }
+   240	  });
+   241	});
+   242	
+   243	describe("ChatClient — HTTP errors", () => {
+   244	  test("401 throws LlmHttpError carrying the status and a body excerpt, and is not retried", async () => {
+   245	    const vendor = startFakeVendor(() => errorResponse(401, "Invalid authentication credentials"));
+   246	
+   247	    try {
+   248	      const client = clientFor(vendor.baseUrl);
+   249	      let thrown: unknown;
+   250	      try {
+   251	        await client.chat([{ role: "user", content: "hi" }]);
+   252	      } catch (error) {
+   253	        thrown = error;
+   254	      }
+   255	
+   256	      console.log("[401] error ->", {
+   257	        name: (thrown as Error)?.name,
+   258	        message: (thrown as Error)?.message,
+   259	        status: (thrown as LlmHttpError)?.status,
+   260	        bodyExcerpt: (thrown as LlmHttpError)?.bodyExcerpt,
+   261	      });
+   262	
+   263	      expect(thrown).toBeInstanceOf(LlmHttpError);
+   264	      const error = thrown as LlmHttpError;
+   265	      expect(error.status).toBe(401);
+   266	      expect(error.bodyExcerpt).toContain("Invalid authentication credentials");
+   267	      expect(error.message).toContain("401");
+   268	      expect(error.message).not.toContain(TEST_KEY);
+   269	      expect(error.bodyExcerpt).not.toContain(TEST_KEY);
+   270	      expect(vendor.requests).toHaveLength(1);
+   271	    } finally {
+   272	      await vendor.stop();
+   273	    }
+   274	  });
+   275	
+   276	  test("404 throws LlmHttpError naming the URL that was called, and is not retried", async () => {
+   277	    const vendor = startFakeVendor(() => errorResponse(404, "model not found"));
+   278	
+   279	    try {
+   280	      const client = clientFor(vendor.baseUrl);
+   281	      let thrown: unknown;
+   282	      try {
+   283	        await client.chat([{ role: "user", content: "hi" }]);
+   284	      } catch (error) {
+   285	        thrown = error;
+   286	      }
+   287	
+   288	      console.log("[404] error ->", (thrown as Error)?.message);
+   289	      expect(thrown).toBeInstanceOf(LlmHttpError);
+   290	      expect((thrown as LlmHttpError).status).toBe(404);
+   291	      expect((thrown as LlmHttpError).url).toBe(`${vendor.baseUrl}/chat/completions`);
+   292	      expect(vendor.requests).toHaveLength(1);
+   293	    } finally {
+   294	      await vendor.stop();
+   295	    }
+   296	  });
+   297	
+   298	  test("a 400 is never retried — client errors are the caller's bug, not a transient fault", async () => {
+   299	    const vendor = startFakeVendor(() => errorResponse(400, "bad request"));
+   300	    try {
+   301	      const client = clientFor(vendor.baseUrl);
+   302	      await expect(client.chat([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(LlmHttpError);
+   303	      console.log("[400] attempts ->", vendor.requests.length);
+   304	      expect(vendor.requests).toHaveLength(1);
+   305	    } finally {
+   306	      await vendor.stop();
+   307	    }
+   308	  });
+   309	
+   310	  test("a malformed success body (no choices) throws LlmProtocolError with an excerpt", async () => {
+   311	    const vendor = startFakeVendor(() => Response.json({ id: "x", object: "chat.completion" }));
+   312	    try {
+   313	      const client = clientFor(vendor.baseUrl);
+   314	      let thrown: unknown;
+   315	      try {
+   316	        await client.chat([{ role: "user", content: "hi" }]);
+   317	      } catch (error) {
+   318	        thrown = error;
+   319	      }
+   320	      console.log("[malformed] error ->", (thrown as Error)?.message);
+   321	      expect(thrown).toBeInstanceOf(LlmProtocolError);
+   322	      expect((thrown as LlmProtocolError).bodyExcerpt).toContain("chat.completion");
+   323	    } finally {
+   324	      await vendor.stop();
+   325	    }
+   326	  });
+   327	
+   328	  test("non-JSON success body throws LlmProtocolError rather than crashing the parser", async () => {
+   329	    const vendor = startFakeVendor(() => new Response("<html>gateway page</html>", { status: 200 }));
+   330	    try {
+   331	      const client = clientFor(vendor.baseUrl);
+   332	      await expect(client.chat([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
+   333	        LlmProtocolError,
+   334	      );
+   335	    } finally {
+   336	      await vendor.stop();
+   337	    }
+   338	  });
+   339	});
+   340	
+   341	describe("ChatClient — retry policy", () => {
+   342	  test("429 then success: exactly one retry, after a backoff, and the second reply is returned", async () => {
+   343	    const vendor = startFakeVendor((_request, index) => {
+   344	      if (index === 0) return errorResponse(429, "rate limited, slow down");
+   345	      return completionResponse({
+   346	        content: "second attempt succeeded",
+   347	        usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+   348	      });
+   349	    });
+   350	
+   351	    try {
+   352	      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 50 });
+   353	      const result = await client.chat([{ role: "user", content: "hi" }]);
+   354	
+   355	      const gapMs = vendor.requests[1]!.atMs - vendor.requests[0]!.atMs;
+   356	      console.log("[429 retry] attempts ->", vendor.requests.length, "gap ms ->", gapMs, "text ->", result.text);
+   357	
+   358	      expect(vendor.requests).toHaveLength(2);
+   359	      expect(result.text).toBe("second attempt succeeded");
+   360	      expect(result.usage).toEqual({ prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 });
+   361	      expect(gapMs).toBeGreaterThanOrEqual(40);
+   362	      // Only the successful attempt is accounted for.
+   363	      expect(client.usage.calls).toBe(1);
+   364	    } finally {
+   365	      await vendor.stop();
+   366	    }
+   367	  });
+   368	
+   369	  test("500 then success: server errors are retried too", async () => {
+   370	    const vendor = startFakeVendor((_request, index) =>
+   371	      index === 0
+   372	        ? errorResponse(503, "upstream unavailable")
+   373	        : completionResponse({ content: "recovered" }),
+   374	    );
+   375	    try {
+   376	      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 10 });
+   377	      const result = await client.chat([{ role: "user", content: "hi" }]);
+   378	      console.log("[503 retry] attempts ->", vendor.requests.length, "text ->", result.text);
+   379	      expect(vendor.requests).toHaveLength(2);
+   380	      expect(result.text).toBe("recovered");
+   381	    } finally {
+   382	      await vendor.stop();
+   383	    }
+   384	  });
+   385	
+   386	  test("persistent 429 retries at most ONCE, then surfaces the error", async () => {
+   387	    const vendor = startFakeVendor(() => errorResponse(429, "still rate limited"));
+   388	    try {
+   389	      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 10 });
+   390	      let thrown: unknown;
+   391	      try {
+   392	        await client.chat([{ role: "user", content: "hi" }]);
+   393	      } catch (error) {
+   394	        thrown = error;
+   395	      }
+   396	      console.log("[persistent 429] attempts ->", vendor.requests.length);
+   397	      expect(vendor.requests).toHaveLength(2);
+   398	      expect(thrown).toBeInstanceOf(LlmHttpError);
+   399	      expect((thrown as LlmHttpError).status).toBe(429);
+   400	    } finally {
+   401	      await vendor.stop();
+   402	    }
+   403	  });
+   404	});
+   405	
+   406	describe("ChatClient — timeout and network failure", () => {
+   407	  test("a slow vendor is aborted at the configured timeout and throws LlmTimeoutError", async () => {
+   408	    const vendor = startFakeVendor(async () => {
+   409	      await Bun.sleep(2_000);
+   410	      return completionResponse({ content: "too late" });
+   411	    });
+   412	
+   413	    try {
+   414	      const client = clientFor(vendor.baseUrl, { timeoutMs: 150 });
+   415	      const startedAt = Date.now();
+   416	      let thrown: unknown;
+   417	      try {
+   418	        await client.chat([{ role: "user", content: "hi" }]);
+   419	      } catch (error) {
+   420	        thrown = error;
+     1	import { afterAll, describe, expect, test } from "bun:test";
+     2	import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+     3	import { join } from "node:path";
+     4	import { tmpdir } from "node:os";
+     5	
+     6	import {
+     7	  API_KEY_ENV,
+     8	  DEFAULT_BASE_URL,
+     9	  DEFAULT_MODEL,
+    10	  DEFAULT_RETRY_BACKOFF_MS,
+    11	  DEFAULT_TIMEOUT_MS,
+    12	  ENV_FILE_NAME,
+    13	  loadLlmConfig,
+    14	  readEnvFile,
+    15	} from "../../src/llm/config.ts";
+    16	import { LlmConfigError } from "../../src/llm/errors.ts";
+    17	
+    18	const scratch = mkdtempSync(join(tmpdir(), "mmt-llm-config-"));
+    19	afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+    20	
+    21	function writeEnvFile(name: string, contents: string): string {
+    22	  const path = join(scratch, name);
+    23	  writeFileSync(path, contents, "utf8");
+    24	  return path;
+    25	}
+    26	
+    27	describe("readEnvFile", () => {
+    28	  test("parses KEY=VALUE lines, ignoring comments, blanks and surrounding quotes", () => {
+    29	    const path = writeEnvFile(
+    30	      "parse.env",
+    31	      [
+    32	        "# a comment line",
+    33	        "",
+    34	        "POE_API_KEY=plain-value",
+    35	        'POE_BASE_URL="https://quoted.example/v1"',
+    36	        "POE_MODEL='single-quoted-model'",
+    37	        "  SPACED_KEY = spaced value  ",
+    38	        "MALFORMED_LINE_WITHOUT_EQUALS",
+    39	      ].join("\n"),
+    40	    );
+    41	
+    42	    const parsed = readEnvFile(path);
+    43	    console.log("[readEnvFile] parsed keys:", Object.keys(parsed).sort());
+    44	
+    45	    expect(parsed.POE_API_KEY).toBe("plain-value");
+    46	    expect(parsed.POE_BASE_URL).toBe("https://quoted.example/v1");
+    47	    expect(parsed.POE_MODEL).toBe("single-quoted-model");
+    48	    expect(parsed.SPACED_KEY).toBe("spaced value");
+    49	    expect(parsed.MALFORMED_LINE_WITHOUT_EQUALS).toBeUndefined();
+    50	  });
+    51	
+    52	  test("returns an empty record for a missing file rather than throwing", () => {
+    53	    const parsed = readEnvFile(join(scratch, "does-not-exist.env"));
+    54	    console.log("[readEnvFile] missing file ->", parsed);
+    55	    expect(parsed).toEqual({});
+    56	  });
+    57	});
+    58	
+    59	describe("loadLlmConfig", () => {
+    60	  test("reads the key from process-style env and applies every documented default", () => {
+    61	    const config = loadLlmConfig({
+    62	      env: { POE_API_KEY: "key-from-env" },
+    63	      envFilePath: join(scratch, "absent.env"),
+    64	    });
+    65	
+    66	    console.log("[loadLlmConfig] defaults ->", {
+    67	      baseUrl: config.baseUrl,
+    68	      model: config.model,
+    69	      timeoutMs: config.timeoutMs,
+    70	      retryBackoffMs: config.retryBackoffMs,
+    71	      apiKeyLength: config.apiKey.length,
+    72	    });
+    73	
+    74	    expect(config.apiKey).toBe("key-from-env");
+    75	    expect(config.baseUrl).toBe(DEFAULT_BASE_URL);
+    76	    expect(config.baseUrl).toBe("https://api.poe.com/v1");
+    77	    expect(config.model).toBe(DEFAULT_MODEL);
+    78	    // Verified against GET https://api.poe.com/v1/models — Poe's ids are lowercase-hyphenated.
+    79	    expect(DEFAULT_MODEL).toBe("claude-sonnet-4.5");
+    80	    expect(config.timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
+    81	    expect(config.retryBackoffMs).toBe(DEFAULT_RETRY_BACKOFF_MS);
+    82	  });
+    83	
+    84	  test("falls back to the .env.local file when the variable is absent from env — the bun-test case", () => {
+    85	    // `bun test` sets NODE_ENV=test, and Bun deliberately does NOT auto-load
+    86	    // .env.local in the test environment. Without this explicit fallback the
+    87	    // client would be silently keyless under test and in any NODE_ENV=test run.
+    88	    const path = writeEnvFile(
+    89	      "fallback.env",
+    90	      ["POE_API_KEY=key-from-file", "POE_BASE_URL=https://file.example/v1", "POE_MODEL=File-Model"].join("\n"),
+    91	    );
+    92	
+    93	    const config = loadLlmConfig({ env: {}, envFilePath: path });
+    94	    console.log("[loadLlmConfig] from file ->", { baseUrl: config.baseUrl, model: config.model });
+    95	
+    96	    expect(config.apiKey).toBe("key-from-file");
+    97	    expect(config.baseUrl).toBe("https://file.example/v1");
+    98	    expect(config.model).toBe("File-Model");
+    99	  });
+   100	
+   101	  test("process env wins over the env file, and explicit options win over both", () => {
+   102	    const path = writeEnvFile(
+   103	      "precedence.env",
+   104	      ["POE_API_KEY=key-from-file", "POE_BASE_URL=https://file.example/v1"].join("\n"),
+   105	    );
+   106	
+   107	    const envWins = loadLlmConfig({ env: { POE_API_KEY: "key-from-env" }, envFilePath: path });
+   108	    expect(envWins.apiKey).toBe("key-from-env");
+   109	    expect(envWins.baseUrl).toBe("https://file.example/v1");
+   110	
+   111	    const optionWins = loadLlmConfig({
+   112	      env: { POE_API_KEY: "key-from-env", POE_BASE_URL: "https://env.example/v1" },
+   113	      envFilePath: path,
+   114	      apiKey: "key-from-option",
+   115	      baseUrl: "https://option.example/v1",
+   116	      model: "Option-Model",
+   117	      timeoutMs: 1234,
+   118	      retryBackoffMs: 7,
+   119	    });
+   120	
+   121	    console.log("[loadLlmConfig] precedence ->", {
+   122	      envWinsBaseUrl: envWins.baseUrl,
+   123	      optionBaseUrl: optionWins.baseUrl,
+   124	      optionModel: optionWins.model,
+   125	    });
+   126	
+   127	    expect(optionWins.apiKey).toBe("key-from-option");
+   128	    expect(optionWins.baseUrl).toBe("https://option.example/v1");
+   129	    expect(optionWins.model).toBe("Option-Model");
+   130	    expect(optionWins.timeoutMs).toBe(1234);
+   131	    expect(optionWins.retryBackoffMs).toBe(7);
+   132	  });
+   133	
+   134	  test("strips a trailing slash from the base URL so path joining never doubles it", () => {
+   135	    const config = loadLlmConfig({
+   136	      env: { POE_API_KEY: "k", POE_BASE_URL: "https://trailing.example/v1/" },
+   137	      envFilePath: join(scratch, "absent.env"),
+   138	    });
+   139	    console.log("[loadLlmConfig] normalized base URL ->", config.baseUrl);
+   140	    expect(config.baseUrl).toBe("https://trailing.example/v1");
+   141	  });
+   142	
+   143	  test("a missing key throws LlmConfigError naming both the variable and the file, and leaks no value", () => {
+   144	    const path = join(scratch, "empty.env");
+   145	    writeFileSync(path, "# nothing useful here\n", "utf8");
+   146	
+   147	    let thrown: unknown;
+   148	    try {
+   149	      loadLlmConfig({ env: {}, envFilePath: path });
+   150	    } catch (error) {
+   151	      thrown = error;
+   152	    }
+   153	
+   154	    console.log("[loadLlmConfig] missing-key error ->", (thrown as Error)?.message);
+   155	
+   156	    expect(thrown).toBeInstanceOf(LlmConfigError);
+   157	    const message = (thrown as Error).message;
+   158	    expect(API_KEY_ENV).toBe("POE_API_KEY");
+   159	    expect(ENV_FILE_NAME).toBe(".env.local");
+   160	    expect(message).toContain(API_KEY_ENV);
+   161	    expect(message).toContain(ENV_FILE_NAME);
+   162	  });
+   163	
+   164	  test("an empty or whitespace-only key counts as missing", () => {
+   165	    expect(() =>
+   166	      loadLlmConfig({ env: { POE_API_KEY: "   " }, envFilePath: join(scratch, "absent.env") }),
+   167	    ).toThrow(LlmConfigError);
+   168	  });
+   169	});
+     1	/**
+     2	 * A REAL in-process HTTP server that speaks the OpenAI-compatible
+     3	 * chat-completions protocol. This is the test double for the vendor — not a
+     4	 * mock: the client under test performs actual `fetch` calls over TCP against
+     5	 * it, so headers, status codes, JSON framing, retries and aborts are all
+     6	 * exercised for real.
+     7	 */
+     8	
+     9	export interface RecordedRequest {
+    10	  /** HTTP method as the server saw it. */
+    11	  method: string;
+    12	  /** Path only, e.g. "/v1/chat/completions". */
+    13	  path: string;
+    14	  /** Raw Authorization header, so tests can assert the bearer scheme. */
+    15	  authorization: string | null;
+    16	  contentType: string | null;
+    17	  /** Parsed JSON body, or the raw string when the body is not JSON. */
+    18	  body: any;
+    19	  /** Milliseconds since the vendor started, for backoff assertions. */
+    20	  atMs: number;
+    21	}
+    22	
+    23	/** Called for every request; `index` is 0 for the first call, 1 for the retry, ... */
+    24	export type VendorHandler = (
+    25	  request: RecordedRequest,
+    26	  index: number,
+    27	) => Response | Promise<Response>;
+    28	
+    29	export interface FakeVendor {
+    30	  /** Base URL in the shape the client expects, e.g. http://localhost:1234/v1 */
+    31	  baseUrl: string;
+    32	  /** Every request the vendor received, in arrival order. */
+    33	  requests: RecordedRequest[];
+    34	  stop(): Promise<void>;
+    35	}
+    36	
+    37	export function startFakeVendor(handler: VendorHandler): FakeVendor {
+    38	  const requests: RecordedRequest[] = [];
+    39	  const startedAt = Date.now();
+    40	
+    41	  const server = Bun.serve({
+    42	    port: 0,
+    43	    // Long idle timeout so a deliberately slow handler is never cut short by
+    44	    // the server while we are measuring the CLIENT's timeout.
+    45	    idleTimeout: 30,
+    46	    async fetch(req) {
+    47	      const url = new URL(req.url);
+    48	      const raw = await req.text();
+    49	      let body: unknown = null;
+    50	      if (raw.length > 0) {
+    51	        try {
+    52	          body = JSON.parse(raw);
+    53	        } catch {
+    54	          body = raw;
+    55	        }
+    56	      }
+    57	      const recorded: RecordedRequest = {
+    58	        method: req.method,
+    59	        path: url.pathname,
+    60	        authorization: req.headers.get("authorization"),
+    61	        contentType: req.headers.get("content-type"),
+    62	        body,
+    63	        atMs: Date.now() - startedAt,
+    64	      };
+    65	      const index = requests.length;
+    66	      requests.push(recorded);
+    67	      return await handler(recorded, index);
+    68	    },
+    69	  });
+    70	
+    71	  return {
+    72	    baseUrl: `http://localhost:${server.port}/v1`,
+    73	    requests,
+    74	    async stop() {
+    75	      await server.stop(true);
+    76	    },
+    77	  };
+    78	}
+    79	
+    80	/** A well-formed OpenAI-compatible success body. Omit `usage` to simulate a provider that does not report it. */
+    81	export function completionResponse(opts: {
+    82	  content: string;
+    83	  model?: string;
+    84	  usage?: {
+    85	    prompt_tokens?: number;
+    86	    completion_tokens?: number;
+    87	    total_tokens?: number;
+    88	  } | null;
+    89	}): Response {
+    90	  const body: Record<string, unknown> = {
+    91	    id: "chatcmpl-fake",
+    92	    object: "chat.completion",
+    93	    created: Math.floor(Date.now() / 1000),
+    94	    model: opts.model ?? "Fake-Model",
+    95	    choices: [
+    96	      {
+    97	        index: 0,
+    98	        message: { role: "assistant", content: opts.content },
+    99	        finish_reason: "stop",
+   100	      },
+   101	    ],
+   102	  };
+   103	  if (opts.usage !== null && opts.usage !== undefined) body.usage = opts.usage;
+   104	  return Response.json(body);
+   105	}
+   106	
+   107	/** An error body in the shape OpenAI-compatible providers return. */
+   108	export function errorResponse(status: number, message: string): Response {
+   109	  return Response.json({ error: { message, type: "fake_error", code: status } }, { status });
+   110	}
+   111	
+   112	/** Reserve a port by starting and immediately stopping a server — nothing listens there afterwards. */
+   113	export async function deadBaseUrl(): Promise<string> {
+   114	  const vendor = startFakeVendor(() => new Response("never"));
+   115	  const url = vendor.baseUrl;
+   116	  await vendor.stop();
+   117	  return url;
+   118	}
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..79f681e
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,13 @@
++{
++  "name": "murder-mystery-test",
++  "private": true,
++  "type": "module",
++  "module": "src/cli.ts",
++  "scripts": {
++    "start": "bun run src/cli.ts",
++    "test": "bun test"
++  },
++  "devDependencies": {
++    "@types/bun": "latest"
++  }
++}
+diff --git a/src/llm/client.ts b/src/llm/client.ts
+new file mode 100644
+index 0000000..7fe4944
+--- /dev/null
++++ b/src/llm/client.ts
+@@ -0,0 +1,312 @@
++import { loadLlmConfig, type LlmConfig, type LoadLlmConfigOptions } from "./config.ts";
++import {
++  LlmError,
++  LlmHttpError,
++  LlmNetworkError,
++  LlmProtocolError,
++  LlmTimeoutError,
++} from "./errors.ts";
++
++export interface ChatMessage {
++  role: "system" | "user" | "assistant";
++  content: string;
++}
++
++/** The token figures exactly as the provider reported them. Never estimated. */
++export interface TokenUsage {
++  prompt_tokens: number;
++  completion_tokens: number;
++  total_tokens: number;
++}
++
++export interface ChatResult {
++  /** `choices[0].message.content`. */
++  text: string;
++  /** The response's `usage` object, or null when the provider did not report one. */
++  usage: TokenUsage | null;
++  /** The model the response attributed itself to, falling back to the model requested. */
++  model: string;
++}
++
++export type ChatOutcome =
++  | { ok: true; value: ChatResult }
++  | { ok: false; error: LlmError };
++
++export interface ChatOptions {
++  /** Overrides the configured model for this call only. */
++  model?: string;
++  /** Overrides the configured timeout for this call only. */
++  timeoutMs?: number;
++  /** Extra protocol parameters merged into the request body (temperature, max_tokens, stop, ...). */
++  params?: Record<string, unknown>;
++  /** Caller-owned abort signal, honoured alongside the timeout. */
++  signal?: AbortSignal;
++}
++
++export interface ModelUsage {
++  calls: number;
++  prompt_tokens: number;
++  completion_tokens: number;
++  total_tokens: number;
++}
++
++/**
++ * Running total for one client's lifetime — TOKEN-COUNT attribution v1
++ * (orchestrator resolution 5rwbt08h): what is accounted for is token counts per
++ * model, read from each response, not dollar cost.
++ *
++ * `byModel` is keyed by the LOWERCASED model id. Poe matches model ids
++ * case-insensitively and echoes back whatever casing the request used, so
++ * keying on the raw string would silently split one model's tokens across two
++ * buckets and understate its share.
++ */
++export interface SessionUsage {
++  calls: number;
++  callsWithUsage: number;
++  callsWithoutUsage: number;
++  prompt_tokens: number;
++  completion_tokens: number;
++  total_tokens: number;
++  byModel: Record<string, ModelUsage>;
++}
++
++/** The attribution key for a model id: case- and whitespace-insensitive. */
++export function usageKeyFor(model: string): string {
++  return model.trim().toLowerCase();
++}
++
++const BODY_EXCERPT_LIMIT = 500;
++
++/**
++ * An OpenAI-compatible chat-completions client (ADR-0002).
++ *
++ * One transport, no vendor SDK: `POST {baseUrl}/chat/completions` with a bearer
++ * key, a body of `{model, messages, ...params}`, and a reply read from
++ * `choices[0].message.content` plus the response's own `usage` object.
++ */
++export class ChatClient {
++  readonly config: LlmConfig;
++
++  #calls = 0;
++  #callsWithUsage = 0;
++  #promptTokens = 0;
++  #completionTokens = 0;
++  #totalTokens = 0;
++  readonly #byModel = new Map<string, ModelUsage>();
++
++  constructor(config: LlmConfig) {
++    this.config = config;
++  }
++
++  /** The URL every request goes to. */
++  get endpoint(): string {
++    return `${this.config.baseUrl}/chat/completions`;
++  }
++
++  /** A defensive copy of the running token ledger. Mutating it cannot corrupt the client. */
++  get usage(): SessionUsage {
++    const byModel: Record<string, ModelUsage> = {};
++    for (const [model, totals] of this.#byModel) byModel[model] = { ...totals };
++    return {
++      calls: this.#calls,
++      callsWithUsage: this.#callsWithUsage,
++      callsWithoutUsage: this.#calls - this.#callsWithUsage,
++      prompt_tokens: this.#promptTokens,
++      completion_tokens: this.#completionTokens,
++      total_tokens: this.#totalTokens,
++      byModel,
++    };
++  }
++
++  /**
++   * Perform one chat completion. Throws a typed `LlmError` on any failure —
++   * use {@link tryChat} where a failure must degrade rather than propagate.
++   */
++  async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResult> {
++    const model = options.model ?? this.config.model;
++    const timeoutMs = options.timeoutMs ?? this.config.timeoutMs;
++    const body = JSON.stringify({ ...(options.params ?? {}), model, messages });
++
++    const response = await this.#send(body, timeoutMs, options.signal);
++    const raw = await response.text();
++    const result = parseCompletion(raw, this.endpoint, model);
++    this.#account(result);
++    return result;
++  }
++
++  /**
++   * Perform one chat completion, returning a failure instead of throwing.
++   *
++   * PRODUCT.md hard constraint 5: the game stays playable when the model
++   * errors, so the game loop calls this and falls back to plain engine text.
++   */
++  async tryChat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatOutcome> {
++    try {
++      return { ok: true, value: await this.chat(messages, options) };
++    } catch (error) {
++      if (error instanceof LlmError) return { ok: false, error };
++      throw error;
++    }
++  }
++
++  /**
++   * One HTTP exchange, with a single retry on 429/5xx.
++   *
++   * A 4xx other than 429 is the caller's own bug and is never retried; a
++   * timeout is not retried either, because the caller's deadline has already
++   * passed once.
++   */
++  async #send(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
++    for (let attempt = 0; ; attempt++) {
++      const response = await this.#attempt(body, timeoutMs, callerSignal);
++      if (response.ok) return response;
++
++      const retryable = response.status === 429 || response.status >= 500;
++      const excerpt = excerptOf(await response.text());
++
++      if (retryable && attempt === 0) {
++        await Bun.sleep(this.config.retryBackoffMs);
++        continue;
++      }
++
++      throw new LlmHttpError({
++        status: response.status,
++        statusText: response.statusText,
++        url: this.endpoint,
++        bodyExcerpt: excerpt,
++      });
++    }
++  }
++
++  async #attempt(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
++    const controller = new AbortController();
++    const onCallerAbort = () => controller.abort(callerSignal?.reason);
++    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
++
++    let timedOut = false;
++    const timer = setTimeout(() => {
++      timedOut = true;
++      controller.abort();
++    }, timeoutMs);
++
++    try {
++      return await fetch(this.endpoint, {
++        method: "POST",
++        headers: {
++          Authorization: `Bearer ${this.config.apiKey}`,
++          "Content-Type": "application/json",
++          Accept: "application/json",
++        },
++        body,
++        signal: controller.signal,
++      });
++    } catch (cause) {
++      if (timedOut) {
++        throw new LlmTimeoutError({ baseUrl: this.config.baseUrl, timeoutMs });
++      }
++      if (callerSignal?.aborted) throw cause;
++      throw new LlmNetworkError({ baseUrl: this.config.baseUrl, cause });
++    } finally {
++      clearTimeout(timer);
++      callerSignal?.removeEventListener("abort", onCallerAbort);
++    }
++  }
++
++  #account(result: ChatResult): void {
++    this.#calls += 1;
++    if (result.usage === null) return;
++
++    this.#callsWithUsage += 1;
++    this.#promptTokens += result.usage.prompt_tokens;
++    this.#completionTokens += result.usage.completion_tokens;
++    this.#totalTokens += result.usage.total_tokens;
++
++    const key = usageKeyFor(result.model);
++    const totals = this.#byModel.get(key) ?? {
++      calls: 0,
++      prompt_tokens: 0,
++      completion_tokens: 0,
++      total_tokens: 0,
++    };
++    totals.calls += 1;
++    totals.prompt_tokens += result.usage.prompt_tokens;
++    totals.completion_tokens += result.usage.completion_tokens;
++    totals.total_tokens += result.usage.total_tokens;
++    this.#byModel.set(key, totals);
++  }
++}
++
++/** Build a client straight from the environment and `.env.local`. */
++export function createChatClient(options: LoadLlmConfigOptions = {}): ChatClient {
++  return new ChatClient(loadLlmConfig(options));
++}
++
++/** Read `choices[0].message.content` and the optional `usage` object out of a raw response body. */
++export function parseCompletion(raw: string, url: string, requestedModel: string): ChatResult {
++  let payload: unknown;
++  try {
++    payload = JSON.parse(raw);
++  } catch {
++    throw new LlmProtocolError({ url, reason: "response body is not JSON", bodyExcerpt: excerptOf(raw) });
++  }
++
++  if (typeof payload !== "object" || payload === null) {
++    throw new LlmProtocolError({ url, reason: "response body is not an object", bodyExcerpt: excerptOf(raw) });
++  }
++
++  const record = payload as Record<string, unknown>;
++  const choices = record.choices;
++  if (!Array.isArray(choices) || choices.length === 0) {
++    throw new LlmProtocolError({ url, reason: "no choices in response", bodyExcerpt: excerptOf(raw) });
++  }
++
++  const message = (choices[0] as Record<string, unknown> | undefined)?.message as
++    | Record<string, unknown>
++    | undefined;
++  const text = message?.content;
++  if (typeof text !== "string") {
++    throw new LlmProtocolError({
++      url,
++      reason: "choices[0].message.content is not a string",
++      bodyExcerpt: excerptOf(raw),
++    });
++  }
++
++  const model = typeof record.model === "string" && record.model.length > 0 ? record.model : requestedModel;
++
++  return { text, usage: parseUsage(record.usage), model };
++}
++
++/**
++ * Read the provider's `usage` object.
++ *
++ * Absent or unusable usage yields null — tolerated, per ADR-0002, because not
++ * every OpenAI-compatible host reports it. Partial usage is filled with zeros
++ * rather than NaN so the session ledger stays arithmetic.
++ */
++export function parseUsage(value: unknown): TokenUsage | null {
++  if (typeof value !== "object" || value === null) return null;
++  const record = value as Record<string, unknown>;
++
++  const prompt = numberOrNull(record.prompt_tokens);
++  const completion = numberOrNull(record.completion_tokens);
++  const total = numberOrNull(record.total_tokens);
++  if (prompt === null && completion === null && total === null) return null;
++
++  return {
++    prompt_tokens: prompt ?? 0,
++    completion_tokens: completion ?? 0,
++    total_tokens: total ?? 0,
++  };
++}
++
++function numberOrNull(value: unknown): number | null {
++  return typeof value === "number" && Number.isFinite(value) ? value : null;
++}
++
++function excerptOf(body: string): string {
++  const trimmed = body.trim();
++  return trimmed.length > BODY_EXCERPT_LIMIT
++    ? `${trimmed.slice(0, BODY_EXCERPT_LIMIT)}… (truncated)`
++    : trimmed;
++}
+diff --git a/src/llm/config.ts b/src/llm/config.ts
+new file mode 100644
+index 0000000..539d6dc
+--- /dev/null
++++ b/src/llm/config.ts
+@@ -0,0 +1,139 @@
++import { readFileSync } from "node:fs";
++import { resolve } from "node:path";
++
++import { LlmConfigError } from "./errors.ts";
++
++/** Poe's OpenAI-compatible base, per ADR-0002. Swapping providers is a config change, not a code change. */
++export const DEFAULT_BASE_URL = "https://api.poe.com/v1";
++
++/** The key's variable name, per PRODUCT.md hard constraint 2. */
++export const API_KEY_ENV = "POE_API_KEY";
++
++/** The gitignored file the key lives in. */
++export const ENV_FILE_NAME = ".env.local";
++
++/**
++ * Default model, verified present in `GET https://api.poe.com/v1/models`
++ * (2026-08-23). Poe's ids are lowercase-hyphenated and it matches them
++ * case-insensitively. Overridable via POE_MODEL or per call.
++ */
++export const DEFAULT_MODEL = "claude-sonnet-4.5";
++
++export const DEFAULT_TIMEOUT_MS = 60_000;
++
++/** Delay before the single permitted retry on 429/5xx. */
++export const DEFAULT_RETRY_BACKOFF_MS = 500;
++
++export const BASE_URL_ENV = "POE_BASE_URL";
++export const MODEL_ENV = "POE_MODEL";
++
++export interface LlmConfig {
++  /** Base URL with no trailing slash; "/chat/completions" is appended to it. */
++  readonly baseUrl: string;
++  readonly apiKey: string;
++  readonly model: string;
++  readonly timeoutMs: number;
++  readonly retryBackoffMs: number;
++}
++
++export interface LoadLlmConfigOptions {
++  /** Environment record to read. Defaults to `process.env`. */
++  env?: Record<string, string | undefined>;
++  /** Path to the dotenv file used as a fallback. Defaults to `.env.local` in the current working directory. */
++  envFilePath?: string;
++  apiKey?: string;
++  baseUrl?: string;
++  model?: string;
++  timeoutMs?: number;
++  retryBackoffMs?: number;
++}
++
++/**
++ * Parse a dotenv-style file into a record.
++ *
++ * This exists because Bun's automatic `.env.local` loading is NOT active when
++ * `NODE_ENV=test` — which is exactly what `bun test` sets. Relying on the
++ * runtime alone would leave the client silently keyless under test. A missing
++ * file is not an error; it just yields no values.
++ */
++export function readEnvFile(path: string): Record<string, string> {
++  let contents: string;
++  try {
++    contents = readFileSync(path, "utf8");
++  } catch {
++    return {};
++  }
++
++  const values: Record<string, string> = {};
++  for (const rawLine of contents.split("\n")) {
++    const line = rawLine.trim();
++    if (line.length === 0 || line.startsWith("#")) continue;
++
++    const separator = line.indexOf("=");
++    if (separator <= 0) continue;
++
++    const key = line.slice(0, separator).trim();
++    if (key.length === 0) continue;
++
++    let value = line.slice(separator + 1).trim();
++    if (value.length >= 2) {
++      const first = value[0];
++      const last = value[value.length - 1];
++      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
++        value = value.slice(1, -1);
++      }
++    }
++    values[key] = value;
++  }
++  return values;
++}
++
++/**
++ * Resolve the client's configuration.
++ *
++ * Precedence for every value: explicit option, then the environment, then the
++ * dotenv file, then the built-in default. A missing key is fatal and names both
++ * the variable and the file so the failure is self-explanatory. The key itself
++ * is never written to a log, a message, or nahel state.
++ */
++export function loadLlmConfig(options: LoadLlmConfigOptions = {}): LlmConfig {
++  const env = options.env ?? (process.env as Record<string, string | undefined>);
++  const envFilePath = options.envFilePath ?? resolve(process.cwd(), ENV_FILE_NAME);
++  const fileEnv = readEnvFile(envFilePath);
++
++  const pick = (name: string): string | undefined => {
++    const fromEnv = env[name];
++    if (isPresent(fromEnv)) return fromEnv.trim();
++    const fromFile = fileEnv[name];
++    if (isPresent(fromFile)) return fromFile.trim();
++    return undefined;
++  };
++
++  const apiKey = isPresent(options.apiKey) ? options.apiKey.trim() : pick(API_KEY_ENV);
++  if (apiKey === undefined) {
++    throw new LlmConfigError(
++      `Missing ${API_KEY_ENV}. Set it in the gitignored ${ENV_FILE_NAME} at the repository root ` +
++        `(as ${API_KEY_ENV}=<your key>) or export it in the environment. ` +
++        `Note that Bun does not auto-load ${ENV_FILE_NAME} when NODE_ENV=test.`,
++    );
++  }
++
++  const baseUrl = stripTrailingSlash(options.baseUrl ?? pick(BASE_URL_ENV) ?? DEFAULT_BASE_URL);
++  const model = options.model ?? pick(MODEL_ENV) ?? DEFAULT_MODEL;
++
++  return {
++    baseUrl,
++    apiKey,
++    model,
++    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
++    retryBackoffMs: options.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS,
++  };
++}
++
++function isPresent(value: string | undefined): value is string {
++  return typeof value === "string" && value.trim().length > 0;
++}
++
++function stripTrailingSlash(url: string): string {
++  return url.endsWith("/") ? url.slice(0, -1) : url;
++}
+diff --git a/src/llm/errors.ts b/src/llm/errors.ts
+new file mode 100644
+index 0000000..1a1189d
+--- /dev/null
++++ b/src/llm/errors.ts
+@@ -0,0 +1,89 @@
++/**
++ * Typed failures from the LLM transport.
++ *
++ * Every one of these is a `LlmError`, so a caller that only wants to degrade
++ * gracefully can catch the base class. Per PRODUCT.md hard constraint 5 the
++ * game must remain playable when the model is unreachable, so these carry
++ * enough detail to report a failure without being fatal.
++ *
++ * No error ever embeds the API key: messages are built from the URL, the
++ * status, and the vendor's own response body.
++ */
++export abstract class LlmError extends Error {
++  protected constructor(message: string, options?: { cause?: unknown }) {
++    super(message, options as ErrorOptions);
++    this.name = new.target.name;
++  }
++}
++
++/** Configuration is unusable — most commonly, no API key was found. */
++export class LlmConfigError extends LlmError {
++  constructor(message: string) {
++    super(message);
++  }
++}
++
++/** The vendor answered with a non-2xx status. */
++export class LlmHttpError extends LlmError {
++  readonly status: number;
++  readonly url: string;
++  /** First slice of the response body, for diagnosis. Truncated, never parsed for control flow. */
++  readonly bodyExcerpt: string;
++
++  constructor(args: { status: number; statusText: string; url: string; bodyExcerpt: string }) {
++    super(
++      `LLM request to ${args.url} failed with HTTP ${args.status}${
++        args.statusText ? ` ${args.statusText}` : ""
++      }: ${args.bodyExcerpt || "<empty body>"}`,
++    );
++    this.status = args.status;
++    this.url = args.url;
++    this.bodyExcerpt = args.bodyExcerpt;
++  }
++}
++
++/** The request never reached the vendor (DNS, refused connection, TLS, socket reset). */
++export class LlmNetworkError extends LlmError {
++  readonly baseUrl: string;
++
++  constructor(args: { baseUrl: string; cause: unknown }) {
++    super(
++      `LLM request to ${args.baseUrl} failed before a response was received: ${describe(args.cause)}`,
++      { cause: args.cause },
++    );
++    this.baseUrl = args.baseUrl;
++  }
++}
++
++/** The request was aborted because it exceeded the configured timeout. */
++export class LlmTimeoutError extends LlmError {
++  readonly baseUrl: string;
++  readonly timeoutMs: number;
++
++  constructor(args: { baseUrl: string; timeoutMs: number }) {
++    super(`LLM request to ${args.baseUrl} timed out after ${args.timeoutMs}ms`);
++    this.baseUrl = args.baseUrl;
++    this.timeoutMs = args.timeoutMs;
++  }
++}
++
++/** A 2xx response that does not speak the OpenAI-compatible shape. */
++export class LlmProtocolError extends LlmError {
++  readonly url: string;
++  readonly bodyExcerpt: string;
++
++  constructor(args: { url: string; reason: string; bodyExcerpt: string }) {
++    super(
++      `LLM response from ${args.url} is not OpenAI-compatible (${args.reason}): ${
++        args.bodyExcerpt || "<empty body>"
++      }`,
++    );
++    this.url = args.url;
++    this.bodyExcerpt = args.bodyExcerpt;
++  }
++}
++
++function describe(cause: unknown): string {
++  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
++  return String(cause);
++}
+diff --git a/src/llm/index.ts b/src/llm/index.ts
+new file mode 100644
+index 0000000..b9577a1
+--- /dev/null
++++ b/src/llm/index.ts
+@@ -0,0 +1,44 @@
++/**
++ * The chat client: the project's only LLM transport (ADR-0002).
++ *
++ * Everything downstream — the game master, the CLI — talks to the model
++ * through this module and nothing else.
++ */
++export {
++  ChatClient,
++  createChatClient,
++  parseCompletion,
++  parseUsage,
++  usageKeyFor,
++  type ChatMessage,
++  type ChatOptions,
++  type ChatOutcome,
++  type ChatResult,
++  type ModelUsage,
++  type SessionUsage,
++  type TokenUsage,
++} from "./client.ts";
++
++export {
++  API_KEY_ENV,
++  BASE_URL_ENV,
++  DEFAULT_BASE_URL,
++  DEFAULT_MODEL,
++  DEFAULT_RETRY_BACKOFF_MS,
++  DEFAULT_TIMEOUT_MS,
++  ENV_FILE_NAME,
++  MODEL_ENV,
++  loadLlmConfig,
++  readEnvFile,
++  type LlmConfig,
++  type LoadLlmConfigOptions,
++} from "./config.ts";
++
++export {
++  LlmConfigError,
++  LlmError,
++  LlmHttpError,
++  LlmNetworkError,
++  LlmProtocolError,
++  LlmTimeoutError,
++} from "./errors.ts";
+diff --git a/tests/llm/client.test.ts b/tests/llm/client.test.ts
+new file mode 100644
+index 0000000..b2bff27
+--- /dev/null
++++ b/tests/llm/client.test.ts
+@@ -0,0 +1,514 @@
++import { describe, expect, test } from "bun:test";
++
++import { ChatClient } from "../../src/llm/client.ts";
++import {
++  LlmHttpError,
++  LlmNetworkError,
++  LlmProtocolError,
++  LlmTimeoutError,
++} from "../../src/llm/errors.ts";
++import { loadLlmConfig } from "../../src/llm/config.ts";
++import {
++  completionResponse,
++  deadBaseUrl,
++  errorResponse,
++  startFakeVendor,
++} from "./fake-vendor.ts";
++
++const TEST_KEY = "test-key-do-not-log";
++
++/** Build a client pointed at a fake vendor, with test-fast timings. */
++function clientFor(
++  baseUrl: string,
++  overrides: { timeoutMs?: number; retryBackoffMs?: number; model?: string } = {},
++): ChatClient {
++  return new ChatClient(
++    loadLlmConfig({
++      env: {},
++      envFilePath: "/nonexistent/.env.local",
++      apiKey: TEST_KEY,
++      baseUrl,
++      model: overrides.model ?? "Test-Model",
++      timeoutMs: overrides.timeoutMs ?? 5_000,
++      retryBackoffMs: overrides.retryBackoffMs ?? 20,
++    }),
++  );
++}
++
++describe("ChatClient — happy path", () => {
++  test("posts the OpenAI-compatible request and returns text plus the usage figures verbatim", async () => {
++    const vendor = startFakeVendor(() =>
++      completionResponse({
++        content: "The body was found in the conservatory.",
++        model: "Vendor-Reported-Model",
++        usage: { prompt_tokens: 41, completion_tokens: 12, total_tokens: 53 },
++      }),
++    );
++
++    try {
++      const client = clientFor(vendor.baseUrl);
++      const result = await client.chat(
++        [
++          { role: "system", content: "You are the game master." },
++          { role: "user", content: "Describe the scene." },
++        ],
++        { params: { temperature: 0.4, max_tokens: 200 } },
++      );
++
++      const request = vendor.requests[0]!;
++      console.log("[happy path] request ->", {
++        method: request.method,
++        path: request.path,
++        authorization: request.authorization,
++        contentType: request.contentType,
++        body: request.body,
++      });
++      console.log("[happy path] result ->", result);
++
++      // Wire shape, per ADR-0002.
++      expect(vendor.requests).toHaveLength(1);
++      expect(request.method).toBe("POST");
++      expect(request.path).toBe("/v1/chat/completions");
++      expect(request.authorization).toBe(`Bearer ${TEST_KEY}`);
++      expect(request.contentType).toContain("application/json");
++      expect(request.body.model).toBe("Test-Model");
++      expect(request.body.messages).toEqual([
++        { role: "system", content: "You are the game master." },
++        { role: "user", content: "Describe the scene." },
++      ]);
++      expect(request.body.temperature).toBe(0.4);
++      expect(request.body.max_tokens).toBe(200);
++
++      // Reply shape.
++      expect(result.text).toBe("The body was found in the conservatory.");
++      expect(result.model).toBe("Vendor-Reported-Model");
++      expect(result.usage).toEqual({
++        prompt_tokens: 41,
++        completion_tokens: 12,
++        total_tokens: 53,
++      });
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("a per-call model override is what actually goes on the wire", async () => {
++    const vendor = startFakeVendor(() => completionResponse({ content: "ok" }));
++    try {
++      const client = clientFor(vendor.baseUrl, { model: "Config-Model" });
++      await client.chat([{ role: "user", content: "hi" }], { model: "Override-Model" });
++      console.log("[model override] body.model ->", vendor.requests[0]!.body.model);
++      expect(vendor.requests[0]!.body.model).toBe("Override-Model");
++    } finally {
++      await vendor.stop();
++    }
++  });
++});
++
++describe("ChatClient — token accounting", () => {
++  test("a provider that omits usage is tolerated: usage is null and the call still returns text", async () => {
++    const vendor = startFakeVendor(() =>
++      completionResponse({ content: "No usage reported here.", usage: null }),
++    );
++
++    try {
++      const client = clientFor(vendor.baseUrl);
++      const result = await client.chat([{ role: "user", content: "hi" }]);
++      console.log("[missing usage] result ->", result, "session ->", client.usage);
++
++      expect(result.text).toBe("No usage reported here.");
++      expect(result.usage).toBeNull();
++
++      const session = client.usage;
++      expect(session.calls).toBe(1);
++      expect(session.callsWithUsage).toBe(0);
++      expect(session.callsWithoutUsage).toBe(1);
++      expect(session.total_tokens).toBe(0);
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("a partial usage object is filled with zeros rather than NaN", async () => {
++    const vendor = startFakeVendor(() =>
++      completionResponse({ content: "partial", usage: { total_tokens: 9 } }),
++    );
++    try {
++      const client = clientFor(vendor.baseUrl);
++      const result = await client.chat([{ role: "user", content: "hi" }]);
++      console.log("[partial usage] ->", result.usage);
++      expect(result.usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 9 });
++      expect(client.usage.callsWithUsage).toBe(1);
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("session usage sums across calls and attributes per model — TOKEN-COUNT attribution v1", async () => {
++    const vendor = startFakeVendor((_request, index) =>
++      completionResponse({
++        content: `reply ${index}`,
++        model: index === 0 ? "Model-A" : "Model-B",
++        usage: { prompt_tokens: 10 + index, completion_tokens: 5, total_tokens: 15 + index },
++      }),
++    );
++
++    try {
++      const client = clientFor(vendor.baseUrl);
++      await client.chat([{ role: "user", content: "one" }]);
++      await client.chat([{ role: "user", content: "two" }]);
++      await client.chat([{ role: "user", content: "three" }]);
++
++      const session = client.usage;
++      console.log("[session usage] ->", JSON.stringify(session, null, 2));
++
++      expect(session.calls).toBe(3);
++      expect(session.callsWithUsage).toBe(3);
++      expect(session.prompt_tokens).toBe(10 + 11 + 12);
++      expect(session.completion_tokens).toBe(15);
++      expect(session.total_tokens).toBe(15 + 16 + 17);
++
++      expect(session.byModel["model-a"]).toEqual({
++        calls: 1,
++        prompt_tokens: 10,
++        completion_tokens: 5,
++        total_tokens: 15,
++      });
++      expect(session.byModel["model-b"]).toEqual({
++        calls: 2,
++        prompt_tokens: 23,
++        completion_tokens: 10,
++        total_tokens: 33,
++      });
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("attribution is case-insensitive: one model reported in two casings is one bucket", async () => {
++    // Poe matches model ids case-insensitively and echoes back whatever casing
++    // the caller sent, so keying the ledger on the raw string would split one
++    // model's tokens in two and understate its share.
++    const vendor = startFakeVendor((_request, index) =>
++      completionResponse({
++        content: "x",
++        model: index === 0 ? "Claude-Sonnet-4.5" : "claude-sonnet-4.5",
++        usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
++      }),
++    );
++
++    try {
++      const client = clientFor(vendor.baseUrl);
++      await client.chat([{ role: "user", content: "one" }]);
++      await client.chat([{ role: "user", content: "two" }]);
++
++      const session = client.usage;
++      console.log("[case-insensitive attribution] byModel ->", session.byModel);
++
++      expect(Object.keys(session.byModel)).toEqual(["claude-sonnet-4.5"]);
++      expect(session.byModel["claude-sonnet-4.5"]).toEqual({
++        calls: 2,
++        prompt_tokens: 200,
++        completion_tokens: 20,
++        total_tokens: 220,
++      });
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("the usage snapshot is a copy — mutating it cannot corrupt the client's ledger", async () => {
++    const vendor = startFakeVendor(() =>
++      completionResponse({
++        content: "x",
++        model: "Model-A",
++        usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
++      }),
++    );
++    try {
++      const client = clientFor(vendor.baseUrl);
++      await client.chat([{ role: "user", content: "hi" }]);
++      const snapshot = client.usage;
++      snapshot.total_tokens = 99_999;
++      snapshot.byModel["model-a"]!.total_tokens = 99_999;
++      console.log("[snapshot isolation] after mutation, client sees ->", client.usage);
++      expect(client.usage.total_tokens).toBe(7);
++      expect(client.usage.byModel["model-a"]!.total_tokens).toBe(7);
++    } finally {
++      await vendor.stop();
++    }
++  });
++});
++
++describe("ChatClient — HTTP errors", () => {
++  test("401 throws LlmHttpError carrying the status and a body excerpt, and is not retried", async () => {
++    const vendor = startFakeVendor(() => errorResponse(401, "Invalid authentication credentials"));
++
++    try {
++      const client = clientFor(vendor.baseUrl);
++      let thrown: unknown;
++      try {
++        await client.chat([{ role: "user", content: "hi" }]);
++      } catch (error) {
++        thrown = error;
++      }
++
++      console.log("[401] error ->", {
++        name: (thrown as Error)?.name,
++        message: (thrown as Error)?.message,
++        status: (thrown as LlmHttpError)?.status,
++        bodyExcerpt: (thrown as LlmHttpError)?.bodyExcerpt,
++      });
++
++      expect(thrown).toBeInstanceOf(LlmHttpError);
++      const error = thrown as LlmHttpError;
++      expect(error.status).toBe(401);
++      expect(error.bodyExcerpt).toContain("Invalid authentication credentials");
++      expect(error.message).toContain("401");
++      expect(error.message).not.toContain(TEST_KEY);
++      expect(error.bodyExcerpt).not.toContain(TEST_KEY);
++      expect(vendor.requests).toHaveLength(1);
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("404 throws LlmHttpError naming the URL that was called, and is not retried", async () => {
++    const vendor = startFakeVendor(() => errorResponse(404, "model not found"));
++
++    try {
++      const client = clientFor(vendor.baseUrl);
++      let thrown: unknown;
++      try {
++        await client.chat([{ role: "user", content: "hi" }]);
++      } catch (error) {
++        thrown = error;
++      }
++
++      console.log("[404] error ->", (thrown as Error)?.message);
++      expect(thrown).toBeInstanceOf(LlmHttpError);
++      expect((thrown as LlmHttpError).status).toBe(404);
++      expect((thrown as LlmHttpError).url).toBe(`${vendor.baseUrl}/chat/completions`);
++      expect(vendor.requests).toHaveLength(1);
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("a 400 is never retried — client errors are the caller's bug, not a transient fault", async () => {
++    const vendor = startFakeVendor(() => errorResponse(400, "bad request"));
++    try {
++      const client = clientFor(vendor.baseUrl);
++      await expect(client.chat([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(LlmHttpError);
++      console.log("[400] attempts ->", vendor.requests.length);
++      expect(vendor.requests).toHaveLength(1);
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("a malformed success body (no choices) throws LlmProtocolError with an excerpt", async () => {
++    const vendor = startFakeVendor(() => Response.json({ id: "x", object: "chat.completion" }));
++    try {
++      const client = clientFor(vendor.baseUrl);
++      let thrown: unknown;
++      try {
++        await client.chat([{ role: "user", content: "hi" }]);
++      } catch (error) {
++        thrown = error;
++      }
++      console.log("[malformed] error ->", (thrown as Error)?.message);
++      expect(thrown).toBeInstanceOf(LlmProtocolError);
++      expect((thrown as LlmProtocolError).bodyExcerpt).toContain("chat.completion");
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("non-JSON success body throws LlmProtocolError rather than crashing the parser", async () => {
++    const vendor = startFakeVendor(() => new Response("<html>gateway page</html>", { status: 200 }));
++    try {
++      const client = clientFor(vendor.baseUrl);
++      await expect(client.chat([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
++        LlmProtocolError,
++      );
++    } finally {
++      await vendor.stop();
++    }
++  });
++});
++
++describe("ChatClient — retry policy", () => {
++  test("429 then success: exactly one retry, after a backoff, and the second reply is returned", async () => {
++    const vendor = startFakeVendor((_request, index) => {
++      if (index === 0) return errorResponse(429, "rate limited, slow down");
++      return completionResponse({
++        content: "second attempt succeeded",
++        usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
++      });
++    });
++
++    try {
++      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 50 });
++      const result = await client.chat([{ role: "user", content: "hi" }]);
++
++      const gapMs = vendor.requests[1]!.atMs - vendor.requests[0]!.atMs;
++      console.log("[429 retry] attempts ->", vendor.requests.length, "gap ms ->", gapMs, "text ->", result.text);
++
++      expect(vendor.requests).toHaveLength(2);
++      expect(result.text).toBe("second attempt succeeded");
++      expect(result.usage).toEqual({ prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 });
++      expect(gapMs).toBeGreaterThanOrEqual(40);
++      // Only the successful attempt is accounted for.
++      expect(client.usage.calls).toBe(1);
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("500 then success: server errors are retried too", async () => {
++    const vendor = startFakeVendor((_request, index) =>
++      index === 0
++        ? errorResponse(503, "upstream unavailable")
++        : completionResponse({ content: "recovered" }),
++    );
++    try {
++      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 10 });
++      const result = await client.chat([{ role: "user", content: "hi" }]);
++      console.log("[503 retry] attempts ->", vendor.requests.length, "text ->", result.text);
++      expect(vendor.requests).toHaveLength(2);
++      expect(result.text).toBe("recovered");
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("persistent 429 retries at most ONCE, then surfaces the error", async () => {
++    const vendor = startFakeVendor(() => errorResponse(429, "still rate limited"));
++    try {
++      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 10 });
++      let thrown: unknown;
++      try {
++        await client.chat([{ role: "user", content: "hi" }]);
++      } catch (error) {
++        thrown = error;
++      }
++      console.log("[persistent 429] attempts ->", vendor.requests.length);
++      expect(vendor.requests).toHaveLength(2);
++      expect(thrown).toBeInstanceOf(LlmHttpError);
++      expect((thrown as LlmHttpError).status).toBe(429);
++    } finally {
++      await vendor.stop();
++    }
++  });
++});
++
++describe("ChatClient — timeout and network failure", () => {
++  test("a slow vendor is aborted at the configured timeout and throws LlmTimeoutError", async () => {
++    const vendor = startFakeVendor(async () => {
++      await Bun.sleep(2_000);
++      return completionResponse({ content: "too late" });
++    });
++
++    try {
++      const client = clientFor(vendor.baseUrl, { timeoutMs: 150 });
++      const startedAt = Date.now();
++      let thrown: unknown;
++      try {
++        await client.chat([{ role: "user", content: "hi" }]);
++      } catch (error) {
++        thrown = error;
++      }
++      const elapsed = Date.now() - startedAt;
++
++      console.log("[timeout] elapsed ms ->", elapsed, "error ->", (thrown as Error)?.message);
++
++      expect(thrown).toBeInstanceOf(LlmTimeoutError);
++      expect((thrown as LlmTimeoutError).timeoutMs).toBe(150);
++      expect(elapsed).toBeLessThan(1_500);
++      expect((thrown as Error).message).toContain("150");
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("a timeout is not retried — one attempt, then the abort surfaces", async () => {
++    const vendor = startFakeVendor(async () => {
++      await Bun.sleep(1_000);
++      return completionResponse({ content: "too late" });
++    });
++    try {
++      const client = clientFor(vendor.baseUrl, { timeoutMs: 100, retryBackoffMs: 5 });
++      await expect(client.chat([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
++        LlmTimeoutError,
++      );
++      console.log("[timeout no-retry] attempts ->", vendor.requests.length);
++      expect(vendor.requests).toHaveLength(1);
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("a dead endpoint throws LlmNetworkError naming the base URL", async () => {
++    const dead = await deadBaseUrl();
++    const client = clientFor(dead, { timeoutMs: 2_000 });
++
++    let thrown: unknown;
++    try {
++      await client.chat([{ role: "user", content: "hi" }]);
++    } catch (error) {
++      thrown = error;
++    }
++
++    console.log("[network] base ->", dead, "error ->", (thrown as Error)?.message);
++    expect(thrown).toBeInstanceOf(LlmNetworkError);
++    expect((thrown as LlmNetworkError).baseUrl).toBe(dead);
++    expect((thrown as Error).message).toContain(dead);
++    expect((thrown as LlmNetworkError).cause).toBeDefined();
++  });
++});
++
++describe("ChatClient — tryChat, the degradable path for the game loop", () => {
++  test("returns ok:true with the result on success", async () => {
++    const vendor = startFakeVendor(() =>
++      completionResponse({ content: "narration", usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }),
++    );
++    try {
++      const client = clientFor(vendor.baseUrl);
++      const outcome = await client.tryChat([{ role: "user", content: "hi" }]);
++      console.log("[tryChat ok] ->", outcome);
++      expect(outcome.ok).toBe(true);
++      if (outcome.ok) {
++        expect(outcome.value.text).toBe("narration");
++        expect(outcome.value.usage?.total_tokens).toBe(5);
++      }
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("returns ok:false with the typed error instead of throwing into the game loop", async () => {
++    const vendor = startFakeVendor(() => errorResponse(500, "boom"));
++    try {
++      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 5 });
++      const outcome = await client.tryChat([{ role: "user", content: "hi" }]);
++      console.log("[tryChat failure] ->", { ok: outcome.ok, error: outcome.ok ? null : outcome.error.message });
++      expect(outcome.ok).toBe(false);
++      if (!outcome.ok) {
++        expect(outcome.error).toBeInstanceOf(LlmHttpError);
++        expect((outcome.error as LlmHttpError).status).toBe(500);
++      }
++    } finally {
++      await vendor.stop();
++    }
++  });
++
++  test("a network failure also degrades to ok:false rather than throwing", async () => {
++    const dead = await deadBaseUrl();
++    const client = clientFor(dead, { timeoutMs: 2_000 });
++    const outcome = await client.tryChat([{ role: "user", content: "hi" }]);
++    console.log("[tryChat network] ->", { ok: outcome.ok, error: outcome.ok ? null : outcome.error.name });
++    expect(outcome.ok).toBe(false);
++    if (!outcome.ok) expect(outcome.error).toBeInstanceOf(LlmNetworkError);
++  });
++});
+diff --git a/tests/llm/config.test.ts b/tests/llm/config.test.ts
+new file mode 100644
+index 0000000..7444669
+--- /dev/null
++++ b/tests/llm/config.test.ts
+@@ -0,0 +1,169 @@
++import { afterAll, describe, expect, test } from "bun:test";
++import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++
++import {
++  API_KEY_ENV,
++  DEFAULT_BASE_URL,
++  DEFAULT_MODEL,
++  DEFAULT_RETRY_BACKOFF_MS,
++  DEFAULT_TIMEOUT_MS,
++  ENV_FILE_NAME,
++  loadLlmConfig,
++  readEnvFile,
++} from "../../src/llm/config.ts";
++import { LlmConfigError } from "../../src/llm/errors.ts";
++
++const scratch = mkdtempSync(join(tmpdir(), "mmt-llm-config-"));
++afterAll(() => rmSync(scratch, { recursive: true, force: true }));
++
++function writeEnvFile(name: string, contents: string): string {
++  const path = join(scratch, name);
++  writeFileSync(path, contents, "utf8");
++  return path;
++}
++
++describe("readEnvFile", () => {
++  test("parses KEY=VALUE lines, ignoring comments, blanks and surrounding quotes", () => {
++    const path = writeEnvFile(
++      "parse.env",
++      [
++        "# a comment line",
++        "",
++        "POE_API_KEY=plain-value",
++        'POE_BASE_URL="https://quoted.example/v1"',
++        "POE_MODEL='single-quoted-model'",
++        "  SPACED_KEY = spaced value  ",
++        "MALFORMED_LINE_WITHOUT_EQUALS",
++      ].join("\n"),
++    );
++
++    const parsed = readEnvFile(path);
++    console.log("[readEnvFile] parsed keys:", Object.keys(parsed).sort());
++
++    expect(parsed.POE_API_KEY).toBe("plain-value");
++    expect(parsed.POE_BASE_URL).toBe("https://quoted.example/v1");
++    expect(parsed.POE_MODEL).toBe("single-quoted-model");
++    expect(parsed.SPACED_KEY).toBe("spaced value");
++    expect(parsed.MALFORMED_LINE_WITHOUT_EQUALS).toBeUndefined();
++  });
++
++  test("returns an empty record for a missing file rather than throwing", () => {
++    const parsed = readEnvFile(join(scratch, "does-not-exist.env"));
++    console.log("[readEnvFile] missing file ->", parsed);
++    expect(parsed).toEqual({});
++  });
++});
++
++describe("loadLlmConfig", () => {
++  test("reads the key from process-style env and applies every documented default", () => {
++    const config = loadLlmConfig({
++      env: { POE_API_KEY: "key-from-env" },
++      envFilePath: join(scratch, "absent.env"),
++    });
++
++    console.log("[loadLlmConfig] defaults ->", {
++      baseUrl: config.baseUrl,
++      model: config.model,
++      timeoutMs: config.timeoutMs,
++      retryBackoffMs: config.retryBackoffMs,
++      apiKeyLength: config.apiKey.length,
++    });
++
++    expect(config.apiKey).toBe("key-from-env");
++    expect(config.baseUrl).toBe(DEFAULT_BASE_URL);
++    expect(config.baseUrl).toBe("https://api.poe.com/v1");
++    expect(config.model).toBe(DEFAULT_MODEL);
++    // Verified against GET https://api.poe.com/v1/models — Poe's ids are lowercase-hyphenated.
++    expect(DEFAULT_MODEL).toBe("claude-sonnet-4.5");
++    expect(config.timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
++    expect(config.retryBackoffMs).toBe(DEFAULT_RETRY_BACKOFF_MS);
++  });
++
++  test("falls back to the .env.local file when the variable is absent from env — the bun-test case", () => {
++    // `bun test` sets NODE_ENV=test, and Bun deliberately does NOT auto-load
++    // .env.local in the test environment. Without this explicit fallback the
++    // client would be silently keyless under test and in any NODE_ENV=test run.
++    const path = writeEnvFile(
++      "fallback.env",
++      ["POE_API_KEY=key-from-file", "POE_BASE_URL=https://file.example/v1", "POE_MODEL=File-Model"].join("\n"),
++    );
++
++    const config = loadLlmConfig({ env: {}, envFilePath: path });
++    console.log("[loadLlmConfig] from file ->", { baseUrl: config.baseUrl, model: config.model });
++
++    expect(config.apiKey).toBe("key-from-file");
++    expect(config.baseUrl).toBe("https://file.example/v1");
++    expect(config.model).toBe("File-Model");
++  });
++
++  test("process env wins over the env file, and explicit options win over both", () => {
++    const path = writeEnvFile(
++      "precedence.env",
++      ["POE_API_KEY=key-from-file", "POE_BASE_URL=https://file.example/v1"].join("\n"),
++    );
++
++    const envWins = loadLlmConfig({ env: { POE_API_KEY: "key-from-env" }, envFilePath: path });
++    expect(envWins.apiKey).toBe("key-from-env");
++    expect(envWins.baseUrl).toBe("https://file.example/v1");
++
++    const optionWins = loadLlmConfig({
++      env: { POE_API_KEY: "key-from-env", POE_BASE_URL: "https://env.example/v1" },
++      envFilePath: path,
++      apiKey: "key-from-option",
++      baseUrl: "https://option.example/v1",
++      model: "Option-Model",
++      timeoutMs: 1234,
++      retryBackoffMs: 7,
++    });
++
++    console.log("[loadLlmConfig] precedence ->", {
++      envWinsBaseUrl: envWins.baseUrl,
++      optionBaseUrl: optionWins.baseUrl,
++      optionModel: optionWins.model,
++    });
++
++    expect(optionWins.apiKey).toBe("key-from-option");
++    expect(optionWins.baseUrl).toBe("https://option.example/v1");
++    expect(optionWins.model).toBe("Option-Model");
++    expect(optionWins.timeoutMs).toBe(1234);
++    expect(optionWins.retryBackoffMs).toBe(7);
++  });
++
++  test("strips a trailing slash from the base URL so path joining never doubles it", () => {
++    const config = loadLlmConfig({
++      env: { POE_API_KEY: "k", POE_BASE_URL: "https://trailing.example/v1/" },
++      envFilePath: join(scratch, "absent.env"),
++    });
++    console.log("[loadLlmConfig] normalized base URL ->", config.baseUrl);
++    expect(config.baseUrl).toBe("https://trailing.example/v1");
++  });
++
++  test("a missing key throws LlmConfigError naming both the variable and the file, and leaks no value", () => {
++    const path = join(scratch, "empty.env");
++    writeFileSync(path, "# nothing useful here\n", "utf8");
++
++    let thrown: unknown;
++    try {
++      loadLlmConfig({ env: {}, envFilePath: path });
++    } catch (error) {
++      thrown = error;
++    }
++
++    console.log("[loadLlmConfig] missing-key error ->", (thrown as Error)?.message);
++
++    expect(thrown).toBeInstanceOf(LlmConfigError);
++    const message = (thrown as Error).message;
++    expect(API_KEY_ENV).toBe("POE_API_KEY");
++    expect(ENV_FILE_NAME).toBe(".env.local");
++    expect(message).toContain(API_KEY_ENV);
++    expect(message).toContain(ENV_FILE_NAME);
++  });
++
++  test("an empty or whitespace-only key counts as missing", () => {
++    expect(() =>
++      loadLlmConfig({ env: { POE_API_KEY: "   " }, envFilePath: join(scratch, "absent.env") }),
++    ).toThrow(LlmConfigError);
++  });
++});
+diff --git a/tests/llm/fake-vendor.ts b/tests/llm/fake-vendor.ts
+new file mode 100644
+index 0000000..0cb684d
+--- /dev/null
++++ b/tests/llm/fake-vendor.ts
+@@ -0,0 +1,118 @@
++/**
++ * A REAL in-process HTTP server that speaks the OpenAI-compatible
++ * chat-completions protocol. This is the test double for the vendor — not a
++ * mock: the client under test performs actual `fetch` calls over TCP against
++ * it, so headers, status codes, JSON framing, retries and aborts are all
++ * exercised for real.
++ */
++
++export interface RecordedRequest {
++  /** HTTP method as the server saw it. */
++  method: string;
++  /** Path only, e.g. "/v1/chat/completions". */
++  path: string;
++  /** Raw Authorization header, so tests can assert the bearer scheme. */
++  authorization: string | null;
++  contentType: string | null;
++  /** Parsed JSON body, or the raw string when the body is not JSON. */
++  body: any;
++  /** Milliseconds since the vendor started, for backoff assertions. */
++  atMs: number;
++}
++
++/** Called for every request; `index` is 0 for the first call, 1 for the retry, ... */
++export type VendorHandler = (
++  request: RecordedRequest,
++  index: number,
++) => Response | Promise<Response>;
++
++export interface FakeVendor {
++  /** Base URL in the shape the client expects, e.g. http://localhost:1234/v1 */
++  baseUrl: string;
++  /** Every request the vendor received, in arrival order. */
++  requests: RecordedRequest[];
++  stop(): Promise<void>;
++}
++
++export function startFakeVendor(handler: VendorHandler): FakeVendor {
++  const requests: RecordedRequest[] = [];
++  const startedAt = Date.now();
++
++  const server = Bun.serve({
++    port: 0,
++    // Long idle timeout so a deliberately slow handler is never cut short by
++    // the server while we are measuring the CLIENT's timeout.
++    idleTimeout: 30,
++    async fetch(req) {
++      const url = new URL(req.url);
++      const raw = await req.text();
++      let body: unknown = null;
++      if (raw.length > 0) {
++        try {
++          body = JSON.parse(raw);
++        } catch {
++          body = raw;
++        }
++      }
++      const recorded: RecordedRequest = {
++        method: req.method,
++        path: url.pathname,
++        authorization: req.headers.get("authorization"),
++        contentType: req.headers.get("content-type"),
++        body,
++        atMs: Date.now() - startedAt,
++      };
++      const index = requests.length;
++      requests.push(recorded);
++      return await handler(recorded, index);
++    },
++  });
++
++  return {
++    baseUrl: `http://localhost:${server.port}/v1`,
++    requests,
++    async stop() {
++      await server.stop(true);
++    },
++  };
++}
++
++/** A well-formed OpenAI-compatible success body. Omit `usage` to simulate a provider that does not report it. */
++export function completionResponse(opts: {
++  content: string;
++  model?: string;
++  usage?: {
++    prompt_tokens?: number;
++    completion_tokens?: number;
++    total_tokens?: number;
++  } | null;
++}): Response {
++  const body: Record<string, unknown> = {
++    id: "chatcmpl-fake",
++    object: "chat.completion",
++    created: Math.floor(Date.now() / 1000),
++    model: opts.model ?? "Fake-Model",
++    choices: [
++      {
++        index: 0,
++        message: { role: "assistant", content: opts.content },
++        finish_reason: "stop",
++      },
++    ],
++  };
++  if (opts.usage !== null && opts.usage !== undefined) body.usage = opts.usage;
++  return Response.json(body);
++}
++
++/** An error body in the shape OpenAI-compatible providers return. */
++export function errorResponse(status: number, message: string): Response {
++  return Response.json({ error: { message, type: "fake_error", code: status } }, { status });
++}
++
++/** Reserve a port by starting and immediately stopping a server — nothing listens there afterwards. */
++export async function deadBaseUrl(): Promise<string> {
++  const vendor = startFakeVendor(() => new Response("never"));
++  const url = vendor.baseUrl;
++  await vendor.stop();
++  return url;
++}
+diff --git a/tsconfig.json b/tsconfig.json
+new file mode 100644
+index 0000000..af2a490
+--- /dev/null
++++ b/tsconfig.json
+@@ -0,0 +1,21 @@
++{
++  "compilerOptions": {
++    "lib": ["ESNext"],
++    "target": "ESNext",
++    "module": "Preserve",
++    "moduleResolution": "bundler",
++    "moduleDetection": "force",
++    "allowImportingTsExtensions": true,
++    "verbatimModuleSyntax": true,
++    "noEmit": true,
++
++    "strict": true,
++    "noUncheckedIndexedAccess": true,
++    "noImplicitOverride": true,
++    "noFallthroughCasesInSwitch": true,
++    "skipLibCheck": true,
++
++    "types": ["bun"]
++  },
++  "include": ["src", "tests"]
++}
+610ec23 feat(engine): dice-and-corridor board topology with doors and secret passages
+38bdb07 feat(engine): seedable pure RNG and the 21-card Clue deck
+8e5faba fix(llm): key token attribution on the lowercased model id
+ede2e7d test(llm): real in-process vendor server, 28 tests
+5ba2af6 feat(llm): OpenAI-compatible chat client with token accounting
+7124fda chore: minimal Bun/TypeScript scaffolding
+
+2026-08-23T03:04:03.070220Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
+2026-08-23T03:04:12.356113Z ERROR codex_models_manager::cache: failed to load models cache: missing field `base_instructions` at line 97 column 5
+2026-08-23T03:04:12.431767Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
+2026-08-23T03:04:15.490929Z ERROR codex_models_manager::cache: failed to load models cache: missing field `base_instructions` at line 97 column 5
+exec
+/bin/zsh -lc 'bun test tests/llm; bunx tsc --noEmit' in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ exited 127 in 0ms:
+zsh:1: command not found: bun
+zsh:1: command not found: bunx
+
+exec
+/bin/zsh -lc '/Users/jimcarter/.bun/bin/bun test tests/llm; /Users/jimcarter/.bun/bin/bunx tsc --noEmit' in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ exited 1 in 3175ms:
+[503 retry] attempts -> 2 text -> recovered
+[persistent 429] attempts -> 2
+[timeout] elapsed ms -> 151 error -> LLM request to http://localhost:60722/v1 timed out after 150ms
+[timeout no-retry] attempts -> 1
+[network] base -> http://localhost:60730/v1 error -> LLM request to http://localhost:60730/v1 failed before a response was received: Error: Unable to connect. Is the computer able to access the url?
+[tryChat ok] -> {
+  ok: true,
+  value: {
+    text: "narration",
+    usage: {
+      prompt_tokens: 2,
+      completion_tokens: 3,
+      total_tokens: 5,
+    },
+    model: "Fake-Model",
+  },
+}
+[tryChat failure] -> {
+  ok: false,
+  error: "LLM request to http://localhost:60736/v1/chat/completions failed with HTTP 500 Internal Server Error: {\"error\":{\"message\":\"boom\",\"type\":\"fake_error\",\"code\":500}}",
+}
+[tryChat network] -> {
+  ok: false,
+  error: "LlmNetworkError",
+}
+
+ 29 pass
+ 0 fail
+ 106 expect() calls
+Ran 29 tests across 2 files. [3.17s]
+error: bun is unable to write files to tempdir: PermissionDenied
+
+exec
+/bin/zsh -lc 'env TMPDIR=/private/tmp /Users/jimcarter/.bun/bin/bunx tsc --noEmit' in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ exited 1 in 0ms:
+error: bun is unable to write files to tempdir: PermissionDenied
+
+exec
+/bin/zsh -lc './node_modules/.bin/tsc --noEmit' in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ exited 127 in 0ms:
+zsh:1: no such file or directory: ./node_modules/.bin/tsc
+
+exec
+/bin/zsh -lc "cat package.json; rg -n 'callerSignal|signal|partial usage|timeout|response.text|parseUsage' tests/llm/client.test.ts src/llm/client.ts" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+ succeeded in 0ms:
+{
+  "name": "murder-mystery-test",
+  "private": true,
+  "type": "module",
+  "module": "src/cli.ts",
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
+tests/llm/client.test.ts:23:  overrides: { timeoutMs?: number; retryBackoffMs?: number; model?: string } = {},
+tests/llm/client.test.ts:32:      timeoutMs: overrides.timeoutMs ?? 5_000,
+tests/llm/client.test.ts:132:  test("a partial usage object is filled with zeros rather than NaN", async () => {
+tests/llm/client.test.ts:139:      console.log("[partial usage] ->", result.usage);
+tests/llm/client.test.ts:406:describe("ChatClient — timeout and network failure", () => {
+tests/llm/client.test.ts:407:  test("a slow vendor is aborted at the configured timeout and throws LlmTimeoutError", async () => {
+tests/llm/client.test.ts:414:      const client = clientFor(vendor.baseUrl, { timeoutMs: 150 });
+tests/llm/client.test.ts:424:      console.log("[timeout] elapsed ms ->", elapsed, "error ->", (thrown as Error)?.message);
+tests/llm/client.test.ts:427:      expect((thrown as LlmTimeoutError).timeoutMs).toBe(150);
+tests/llm/client.test.ts:435:  test("a timeout is not retried — one attempt, then the abort surfaces", async () => {
+tests/llm/client.test.ts:441:      const client = clientFor(vendor.baseUrl, { timeoutMs: 100, retryBackoffMs: 5 });
+tests/llm/client.test.ts:445:      console.log("[timeout no-retry] attempts ->", vendor.requests.length);
+tests/llm/client.test.ts:454:    const client = clientFor(dead, { timeoutMs: 2_000 });
+tests/llm/client.test.ts:508:    const client = clientFor(dead, { timeoutMs: 2_000 });
+src/llm/client.ts:38:  /** Overrides the configured timeout for this call only. */
+src/llm/client.ts:39:  timeoutMs?: number;
+src/llm/client.ts:42:  /** Caller-owned abort signal, honoured alongside the timeout. */
+src/llm/client.ts:43:  signal?: AbortSignal;
+src/llm/client.ts:127:    const timeoutMs = options.timeoutMs ?? this.config.timeoutMs;
+src/llm/client.ts:130:    const response = await this.#send(body, timeoutMs, options.signal);
+src/llm/client.ts:131:    const raw = await response.text();
+src/llm/client.ts:156:   * timeout is not retried either, because the caller's deadline has already
+src/llm/client.ts:159:  async #send(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
+src/llm/client.ts:161:      const response = await this.#attempt(body, timeoutMs, callerSignal);
+src/llm/client.ts:165:      const excerpt = excerptOf(await response.text());
+src/llm/client.ts:181:  async #attempt(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
+src/llm/client.ts:183:    const onCallerAbort = () => controller.abort(callerSignal?.reason);
+src/llm/client.ts:184:    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+src/llm/client.ts:190:    }, timeoutMs);
+src/llm/client.ts:201:        signal: controller.signal,
+src/llm/client.ts:205:        throw new LlmTimeoutError({ baseUrl: this.config.baseUrl, timeoutMs });
+src/llm/client.ts:207:      if (callerSignal?.aborted) throw cause;
+src/llm/client.ts:211:      callerSignal?.removeEventListener("abort", onCallerAbort);
+src/llm/client.ts:277:  return { text, usage: parseUsage(record.usage), model };
+src/llm/client.ts:287:export function parseUsage(value: unknown): TokenUsage | null {
+
+2026-08-23T03:04:59.915406Z ERROR codex_core::tools::router: error=timeout_ms must be at least 10000
+collab: Wait
+collab: Wait
+collab: Wait
+2026-08-23T03:05:56.607151Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
+codex
+The timeout is cleared when response headers arrive, so a stalled body read can hang indefinitely or escape `tryChat()` as an untyped error.
+
+`parseUsage()` accepts invalid or partial usage and fabricates missing counts as zero, silently corrupting the required token ledger.
+tokens used
+61,288
+✅ dispatched role reviewer-codex [build-review/panel] → codex (run 0mstzvyk)

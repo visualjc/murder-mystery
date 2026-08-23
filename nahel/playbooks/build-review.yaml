@@ -1,0 +1,25 @@
+name: build-review
+description: "Dogfood build recipe: opus subagent builds, cross-vendor panel
+  critiques, host closes"
+steps:
+  - id: build
+    roles:
+      - dev
+    guidance: Implement the work item this drive rides on, exactly per the scope
+      journaled on the item and the constraints in PRODUCT.md and docs/adr/.
+      TypeScript on Bun, TDD (failing test first), bun test green before you
+      finish. Commit in small commits on the epic branch.
+  - id: panel
+    roles:
+      - reviewer-codex
+      - reviewer-agy
+    guidance: "You are reviewing a change to a Clue-style murder-mystery CLI game
+      (deterministic engine, LLM game master via an OpenAI-compatible endpoint).
+      Change summary: {{bindings.change-summary}} --- Name the TWO most serious
+      flaws or risks you see, one sentence each. Output only the two sentences."
+  - id: close
+    roles:
+      - closer
+    guidance: Weigh the panel critiques ({{bindings.crit-codex}} /
+      {{bindings.crit-agy}}) against the code as committed, apply the accepted
+      fixes, journal dispositions, and close the item to in-review.

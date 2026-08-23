@@ -27,6 +27,19 @@ routing:
   default:
     agent: claude
     model: opus
+roles:
+  dev:
+    agent: claude
+    model: opus
+    effort: high
+    exec: subagent
+  reviewer-codex:
+    agent: codex
+  reviewer-agy:
+    agent: agy
+    model: gemini-3.1-pro-high
+  closer:
+    exec: self
 dispatch:
   codex:
     binary: codex

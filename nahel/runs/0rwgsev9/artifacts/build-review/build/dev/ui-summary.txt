@@ -1,0 +1,32 @@
+CLI / UI (item 6yxb3z7p) — CHANGE SUMMARY
+
+src/cli.ts + src/ui/ in four modules, on branch epic/murder-mystery-game, 3 commits.
+  args.ts    pure argv -> decision. --seed (random and PRINTED when unseeded, so every game
+             replays), --players 3-6 bounded by the engine's own MIN/MAX, --model, --no-llm,
+             --help (exit 0, the run-contract healthcheck). Usage errors go to stderr, exit 2.
+  io.ts      the two-call seam the loop may touch: write a line, ask for one. createStdio QUEUES
+             stdin behind a standing 'line' listener — readline drops lines that arrive while no
+             question is pending, which silently broke piped scripts (found by the process test).
+  render.ts  pure view -> lines. Reads PlayerView and Notebook only, never GameState, so the
+             screen cannot spill the case file or another hand.
+  loop.ts    runGame(options, {io, createClient}). Events are flushed BEFORE every prompt; the
+             numbered menu lists only what is legal now while the whole vocabulary stays typable,
+             and an illegal word is refused by the ENGINE in its own words (no second copy of the
+             rules in the UI); IllegalActionError is caught and reprinted, never thrown at the
+             player. Human is seat 1; AI seats run playOpponentTurn with narration. Ends with the
+             reveal and formatUsageLedger — the token-cost evidence, on quit as well as on a win.
+
+Tests: tests/ui/ (args, loop, cli + support.ts), no mocks — real engine, real in-process vendor
+over TCP, real spawned process over a real pipe. Whole repo 331 pass / 0 fail across 18 files
+(265 before), `bunx tsc --noEmit` clean.
+
+Load-bearing evidence: full offline games at 3/4/5/6 seats reach game-over from fixed seeds with a
+human who never accuses (the suspects' deduction closes them); same seed + same answers replays
+byte-identical; a failing vendor degrades to engine text with ONE notice and the game still ends;
+live smoke against api.poe.com printed 'LLM usage: 3 calls, 3313 tokens (2668 prompt + 645
+completion)' through the product surface.
+
+Journaled, not fixed: 'save' from the item's scope is NOT built (the host directive enumerates the
+loop without it and there is no --load); describeEvent's refutation sentence reads wrong for the
+refuter (engine-owned); an all-failure session still prints 'No LLM calls were made' because
+SessionUsage counts only completed responses (llm-owned).

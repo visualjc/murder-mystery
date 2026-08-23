@@ -1,0 +1,6 @@
+Close verdict for k0n64xb4 (game-master), weighing the panel:
+- codex #1 (narrate accepts unfiltered events, private refutation identities leak): ACCEPTED, fixed e18b68b — narrateEvents filters through the engine's own isVisibleTo per viewer; red-first, captured-request assertions.
+- codex #2 (Q&A whitelist bypassed via LLM scenario fields): PREMISE INVALID on validation — scenario prompts carry zero game state, so fields cannot embed the case file; ACCEPTED AS HARDENING TESTS aacaefd (hostile scenario naming cards flows through as fiction only; outbound scenario request proven case-file-indistinguishable via byte-identical bodies across different deals).
+- agy #1 (notebook 'fatal error' retaining refuter's own cards): DISMISSED-DISAGREED — misreads shown-card candidates as solution candidates; the corrected rule tracks WHICH card the refuter showed, and the counter-evidence is empirical: all-AI games at 3/4/5/6 seats each end in exactly ONE accusation, always correct (tests/gm).
+- agy #2 (history-blind persona): ACCEPTED SCOPED, fixed ba58f7b — asker-visible history via a card-free event ALLOW-LIST; agy's literal proposal (paste visibleEvents) would itself have leaked an unrefuted true triple, and the fixer caught that.
+Suite 277/0, tsc clean.

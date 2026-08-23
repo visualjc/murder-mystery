@@ -1,0 +1,6 @@
+Close verdict for br5phvfw (llm-client), weighing the panel:
+- codex #1 (timeout cleared at headers; stalled body hangs / escapes tryChat untyped): ACCEPTED, fixed — timer now spans the body read inside #attempt, abort-during-body surfaces as LlmTimeoutError; regression test "stalled body" (150ms timeout observed, was a 5s hang).
+- codex #2 (parseUsage zero-fills partial usage, corrupting the ledger): ACCEPTED, fixed — three-real-fields-or-exact-derivation-from-two, lone field yields null; old zero-fill test rewritten to the corrected semantics, callsWithoutUsage counts it.
+- agy #1 (fixed backoff ignores Retry-After on 429): DEFERRED on the merits — real improvement, not v1-blocking; single retry with short backoff stands; noted for a follow-up item.
+- agy #2 (.env.local fallback load risks tests hitting billed APIs): DISMISSED-DISAGREED — every test constructs its client from explicit config against the in-process fake vendor and never calls loadLlmConfig implicitly; the fallback exists because Bun suppresses .env.local under NODE_ENV=test, which would otherwise make the RUNTIME keyless. Risk accepted and documented.
+tests/llm: 31 pass / 0 fail after fixes.

@@ -1,0 +1,2 @@
+{"id":"gxqgfgp0","ts":"2026-08-23T05:14:06Z","seq":0,"type":"item.updated","actor":{"kind":"agent","id":"claude-code"},"item":"cycx4815","payload":{"target":"item","record":{"id":"cycx4815","name":"e2e","type":"chore","status":"in-review","lane":"full","parent":"hcsshz65","depends_on":["6yxb3z7p"],"external_refs":[],"created":"2026-08-22T23:02:20Z","updated":"2026-08-23T05:14:06Z"},"body":""}}
+{"id":"3qw5nfk1","ts":"2026-08-23T05:14:06Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

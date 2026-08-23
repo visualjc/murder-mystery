@@ -1,0 +1,2 @@
+{"id":"7k4qj66w","ts":"2026-08-23T02:48:58Z","seq":0,"type":"playbook.updated","actor":{"kind":"agent","id":"claude-code"},"payload":{"playbook":"build-review","created":true,"changed":["description","step build","step panel","step close"]}}
+{"id":"k25pxksw","ts":"2026-08-23T02:48:58Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

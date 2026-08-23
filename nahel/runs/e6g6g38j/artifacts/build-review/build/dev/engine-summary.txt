@@ -1,0 +1,32 @@
+ENGINE (item 0jrmya9a) — CHANGE SUMMARY
+
+What exists now: a complete deterministic Clue engine — pure functions over a plain
+state value, no clock, no network, no LLM, no Math.random anywhere in src/engine.
+Movement is STANDARD dice-and-corridor per orchestrator resolution 5rwbt08h.
+
+File map (src/engine/):
+  rng.ts     seedable mulberry32 as a VALUE in state (createRng/nextInt/rollDie/pick/shuffle)
+  cards.ts   6 suspects / 6 weapons / 9 rooms, category guards, solution-triple helpers
+  board.ts   9 room boxes + 7 corridor segments -> 77 unit squares, 17 doors, 2 secret
+             passages (Study<->Kitchen, Conservatory<->Lounge); legalDestinations() BFS
+  types.ts   GameState, Player, GameEvent (each with visibleTo), IllegalActionError
+  setup.ts   case file draw, round-robin deal of the other 18, weapon + token placement
+  actions.ts turn machine: rollDice/moveTo/takeSecretPassage/makeSuggestion/makeAccusation/endTurn
+  view.ts    playerView (no case file, no other hands), visibleEvents, describeEvent fallback
+  index.ts   public entry point
+Tests (tests/engine/): rng, cards, board, setup, actions, view, playthrough + helpers.ts.
+
+Test count: 172 engine tests green (5,144 assertions). Whole repo `bun test` 203 green
+including the sibling LLM slice. `bunx tsc --noEmit` clean under the strict tsconfig.
+
+Notable decisions / deviations:
+ - ONE d6 per turn (the step directive said "roll d6"); classic Clue rolls 2d6.
+ - Board is faithful in structure, loose in measurement; corridor squares hold one token
+   and block passage; entering a room ends the move so no path crosses a room.
+ - ADR-0003's "rooms and adjacency as a named graph rather than a grid" is now STALE.
+ - Refutation card choice defaults to seeded RNG (exact replay); optional callback lets a
+   human/LLM refuter choose. Suggestions relocate the weapon token too, and a player pulled
+   into a room may suggest there next turn without moving.
+ - Minimum roster is 2 (classic minimum is 3).
+ - The playthrough test proves solvability: a deduction bot reading only view-level facts
+   wins at 3-6 players, and every card it believes located is cross-checked against truth.

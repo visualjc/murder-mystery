@@ -1,0 +1,2 @@
+{"id":"8ghyd41z","ts":"2026-08-23T04:55:57Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"claude-code"},"item":"0msryhyf","payload":{"target":"item","record":{"id":"0msryhyf","name":"save-load-sessions","type":"feature","status":"backlog","lane":"direct","depends_on":[],"external_refs":[],"created":"2026-08-23T04:55:57Z","updated":"2026-08-23T04:55:57Z"},"body":""}}
+{"id":"a99nmmgb","ts":"2026-08-23T04:55:57Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}
