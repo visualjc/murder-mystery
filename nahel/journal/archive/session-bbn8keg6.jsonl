@@ -1,0 +1,2 @@
+{"id":"7mjyv0bt","ts":"2026-08-23T05:58:49Z","seq":0,"type":"note","actor":{"kind":"agent","id":"codex"},"item":"hcsshz65","payload":{"summary":"epic review verdict: request-changes — mixed-session ledger wording must explicitly identify failures as failed calls, not leave them grammatically attached to attempts","verdict":"request-changes","round":3}}
+{"id":"438qm43w","ts":"2026-08-23T05:58:49Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"codex"},"payload":{}}

@@ -1,0 +1,2 @@
+{"id":"sq96zvar","ts":"2026-08-23T05:49:14Z","seq":0,"type":"note","actor":{"kind":"agent","id":"codex"},"item":"hcsshz65","payload":{"summary":"epic review finding: src/llm/client.ts and src/gm/index.ts — sanitizeVendorText preserves LF and tab in vendor model IDs and the ledger interpolates keys verbatim, allowing a response model value to forge extra terminal ledger lines","severity":"minor"}}
+{"id":"c6gbw4n8","ts":"2026-08-23T05:49:14Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"codex"},"payload":{}}

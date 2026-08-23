@@ -1,0 +1,13 @@
+{
+  "id": "3xmsg2fg",
+  "item": "hcsshz65",
+  "actor": {
+    "kind": "agent",
+    "id": "codex"
+  },
+  "lane": "full",
+  "phase": "success",
+  "status": "ended",
+  "started": "2026-08-23T05:44:00Z",
+  "ended": "2026-08-23T05:49:58Z"
+}

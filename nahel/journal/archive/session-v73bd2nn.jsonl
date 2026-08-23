@@ -1,0 +1,2 @@
+{"id":"my4y5ex3","ts":"2026-08-23T06:00:12Z","seq":0,"type":"item.updated","actor":{"kind":"agent","id":"claude-code"},"item":"hcsshz65","payload":{"target":"item","record":{"id":"hcsshz65","name":"murder-mystery-game","type":"feature","status":"blocked","lane":"full","depends_on":[],"external_refs":[],"created":"2026-08-22T23:01:57Z","updated":"2026-08-23T06:00:12Z"},"body":""}}
+{"id":"mvf6wssz","ts":"2026-08-23T06:00:12Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}
