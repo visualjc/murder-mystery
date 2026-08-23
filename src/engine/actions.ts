@@ -423,13 +423,29 @@ export function makeAccusation(state: GameState, accusation: SolutionTriple): Ga
 }
 
 /**
- * Hand play to the next player still in the running. `awaiting-move` may only
- * be abandoned when the roll leaves nowhere legal to go.
+ * Hand play to the next player still in the running.
+ *
+ * A turn cannot simply be passed. Standard Clue obliges the player to roll and
+ * move, with the secret passage as the one alternative to rolling, so
+ * `awaiting-roll` is refused: the seat still owes the board a move. The two
+ * ways out of that obligation are both real turns — a player pulled into a room
+ * by someone else's suggestion may suggest from there instead of moving, and an
+ * eliminated seat owes nothing at all (`advanceTurn` normally skips it; this
+ * keeps a forced eliminated turn from deadlocking). `awaiting-move` may only be
+ * abandoned when the roll leaves nowhere legal to go.
  */
 export function endTurn(state: GameState): GameState {
   if (state.over) throw new IllegalActionError('the game is over');
-  if (state.phase === 'awaiting-move' && legalMoves(state).length > 0) {
-    throw new IllegalActionError('the rolled move must be made before ending the turn');
+  const player = currentPlayer(state);
+  if (!player.eliminated) {
+    if (state.phase === 'awaiting-move' && legalMoves(state).length > 0) {
+      throw new IllegalActionError('the rolled move must be made before ending the turn');
+    }
+    if (state.phase === 'awaiting-roll' && !player.hasMovedThisTurn && !player.hasSuggestedThisTurn) {
+      throw new IllegalActionError(
+        `${player.id} must roll and move (or take a secret passage) before ending the turn`,
+      );
+    }
   }
   return advanceTurn(state);
 }

@@ -430,10 +430,11 @@ describe('makeAccusation', () => {
       weapon: 'Rope',
       room: 'Hall',
     });
-    // p2 -> p3 -> back to p2, never p1
-    const afterP2 = endTurn(turnOf(wrong, 'p2'));
+    // p2 -> p3 -> back to p2, never p1. Each seat takes a real turn first:
+    // endTurn no longer accepts a seat that has not moved.
+    const afterP2 = endTurn(standingInRoom(wrong, 'p2', 'Lounge'));
     expect(currentPlayer(afterP2).id).toBe('p3');
-    const afterP3 = endTurn(afterP2);
+    const afterP3 = endTurn(standingInRoom(afterP2, 'p3', 'Kitchen'));
     expect(currentPlayer(afterP3).id).toBe('p2');
 
     const suggestion = makeSuggestion(standingInRoom(afterP3, 'p2', 'Ballroom'), {
@@ -489,8 +490,61 @@ describe('endTurn', () => {
   });
 
   test('wraps from the last seat back to the first', () => {
-    const state = turnOf(arrangedGame(), 'p3');
+    const state = standingInRoom(arrangedGame(), 'p3', 'Hall');
     expect(currentPlayer(endTurn(state)).id).toBe('p1');
+  });
+
+  // Corrected semantics: the OLD assertion here let a player end their turn
+  // straight from awaiting-roll, i.e. skip the mandatory roll+move. Standard
+  // Clue: you must roll and move on your turn (the secret passage is the
+  // alternative to rolling), so awaiting-roll now refuses.
+  test('refuses to skip the mandatory roll and move', () => {
+    const fresh = turnOf(arrangedGame(), 'p3');
+    expect(fresh.phase).toBe('awaiting-roll');
+    expect(playerById(fresh, 'p3').hasMovedThisTurn).toBe(false);
+    expect(() => endTurn(fresh)).toThrow(IllegalActionError);
+  });
+
+  test('is legal once the roll has been spent on a move', () => {
+    const rolled = rollDice(turnOf(arrangedGame(), 'p3'));
+    const target = legalMoves(rolled)[0];
+    if (!target) throw new Error('expected at least one destination');
+    expect(currentPlayer(endTurn(moveTo(rolled, target.position))).id).toBe('p1');
+  });
+
+  test('is legal after a secret passage, which replaces the roll', () => {
+    const state = turnOf(placeToken(arrangedGame(), 'p1', inRoom('Study')), 'p1');
+    expect(currentPlayer(endTurn(takeSecretPassage(state))).id).toBe('p2');
+  });
+
+  test('a player pulled into a room may suggest there and then end without moving', () => {
+    const pulled = makeSuggestion(standingInRoom(arrangedGame(), 'p1', 'Library'), {
+      suspect: 'Colonel Mustard',
+      weapon: 'Rope',
+    });
+    const p2sTurn = turnOf(pulled, 'p2');
+    expect(() => endTurn(p2sTurn)).toThrow(IllegalActionError);
+    // p3 holds Mrs. Peacock and nothing else named, so the refutation settles
+    // inside makeSuggestion and the turn is squarely in awaiting-action.
+    const suggested = makeSuggestion(p2sTurn, {
+      suspect: 'Mrs. Peacock',
+      weapon: 'Candlestick',
+    });
+    expect(playerById(suggested, 'p2').hasMovedThisTurn).toBe(false);
+    expect(currentPlayer(endTurn(suggested)).id).toBe('p3');
+  });
+
+  test('an eliminated seat whose turn is forced on it may pass', () => {
+    // advanceTurn skips eliminated seats, so this is only reachable by force.
+    // It must not deadlock: an eliminated player owes no roll.
+    const wrong = makeAccusation(arrangedGame(), {
+      suspect: 'Mrs. White',
+      weapon: 'Rope',
+      room: 'Hall',
+    });
+    const forced = turnOf(wrong, 'p1');
+    expect(playerById(forced, 'p1').eliminated).toBe(true);
+    expect(currentPlayer(endTurn(forced)).id).toBe('p2');
   });
 
   test('refuses to skip a move that is still available', () => {
