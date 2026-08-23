@@ -24,7 +24,6 @@ import {
   canSuggest,
   currentPlayer,
   endTurn,
-  lastSuggestionOutcome,
   legalMoves,
   makeAccusation,
   makeSuggestion,
@@ -34,74 +33,31 @@ import {
   rollDice,
 } from '../../src/engine/actions.ts';
 import { createGame } from '../../src/engine/setup.ts';
-import { handOf, visibleEvents } from '../../src/engine/view.ts';
+import { handOf, playerView } from '../../src/engine/view.ts';
 import type { GameState, PlayerId } from '../../src/engine/types.ts';
+import { buildNotebook } from '../../src/gm/notebook.ts';
 
 /**
  * What one player can prove about where cards are, from their own hand plus the
  * events addressed to them. Uses only public and privately-addressed facts.
+ *
+ * The reasoning itself is the SHIPPED notebook (`src/gm/notebook.ts`), so this
+ * bot is exactly as informed as an LLM-driven suspect and the closed world it
+ * reasons over is a `playerView`, nothing more.
  */
 function knowledgeOf(state: GameState, playerId: PlayerId): {
-  held: Map<Card, PlayerId>;
-  candidates: { suspects: Suspect[]; weapons: Weapon[]; rooms: Room[] };
+  held: ReadonlyMap<Card, PlayerId>;
+  candidates: { suspects: readonly Suspect[]; weapons: readonly Weapon[]; rooms: readonly Room[] };
 } {
-  const held = new Map<Card, PlayerId>();
-  for (const card of handOf(state, playerId)) held.set(card, playerId);
-
-  const events = visibleEvents(state, playerId);
-  // Suggestions paired with who refuted them, as this player saw it.
-  const refutations: { named: Card[]; refuter: PlayerId }[] = [];
-  let pending: Card[] | null = null;
-  for (const event of events) {
-    if (event.type === 'suggestion-made') pending = [event.suspect, event.weapon, event.room];
-    if (event.type === 'refutation-card-shown') held.set(event.card, event.refuter);
-    if (event.type === 'suggestion-refuted' && pending) {
-      refutations.push({ named: pending, refuter: event.refuter });
-    }
-  }
-
-  // Fixpoint. A refuter showed one of the three named cards, so the card they
-  // showed must be one that is NOT already known to sit in someone else's hand.
-  // (Cards already known to be the refuter's own stay in the running — they are
-  // exactly what the refuter could have shown.) When only one candidate is left,
-  // the refuter holds it.
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const { named, refuter } of refutations) {
-      const possible = named.filter((card) => {
-        const holder = held.get(card);
-        return holder === undefined || holder === refuter;
-      });
-      const only = possible[0];
-      if (possible.length === 1 && only && !held.has(only)) {
-        held.set(only, refuter);
-        changed = true;
-      }
-    }
-  }
-
-  const open = <T extends Card>(all: readonly T[]) => all.filter((card) => !held.has(card));
+  const notebook = buildNotebook(playerView(state, playerId));
   return {
-    held,
-    candidates: { suspects: open(SUSPECTS), weapons: open(WEAPONS), rooms: open(ROOMS) },
+    held: notebook.held,
+    candidates: { suspects: notebook.suspects, weapons: notebook.weapons, rooms: notebook.rooms },
   };
 }
 
 function solvedTriple(state: GameState, playerId: PlayerId): SolutionTriple | null {
-  const { candidates } = knowledgeOf(state, playerId);
-  if (
-    candidates.suspects.length === 1 &&
-    candidates.weapons.length === 1 &&
-    candidates.rooms.length === 1
-  ) {
-    return {
-      suspect: candidates.suspects[0] as Suspect,
-      weapon: candidates.weapons[0] as Weapon,
-      room: candidates.rooms[0] as Room,
-    };
-  }
-  return null;
+  return buildNotebook(playerView(state, playerId)).solution;
 }
 
 /**
@@ -152,14 +108,8 @@ function playTurn(state: GameState): GameState {
   next = makeSuggestion(next, { suspect, weapon });
   next = settleRefutation(next);
 
-  const outcome = lastSuggestionOutcome(next);
-  const named: Card[] = [suspect, weapon, room];
-  const mine = new Set<Card>(handOf(next, me));
-  if (outcome?.refuter === null && named.every((card) => !mine.has(card))) {
-    // Nobody could refute and none of the three is mine: all three are the answer.
-    return makeAccusation(next, { suspect, weapon, room });
-  }
-
+  // An unrefuted suggestion of our own needs no special case here: the notebook
+  // reads it as proof that every named card we do not hold is in the case file.
   const nowSolved = solvedTriple(next, me);
   if (nowSolved) return makeAccusation(next, nowSolved);
   return endTurn(next);
