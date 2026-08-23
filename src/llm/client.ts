@@ -127,8 +127,7 @@ export class ChatClient {
     const timeoutMs = options.timeoutMs ?? this.config.timeoutMs;
     const body = JSON.stringify({ ...(options.params ?? {}), model, messages });
 
-    const response = await this.#send(body, timeoutMs, options.signal);
-    const raw = await response.text();
+    const raw = await this.#send(body, timeoutMs, options.signal);
     const result = parseCompletion(raw, this.endpoint, model);
     this.#account(result);
     return result;
@@ -156,13 +155,13 @@ export class ChatClient {
    * timeout is not retried either, because the caller's deadline has already
    * passed once.
    */
-  async #send(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
+  async #send(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<string> {
     for (let attempt = 0; ; attempt++) {
-      const response = await this.#attempt(body, timeoutMs, callerSignal);
-      if (response.ok) return response;
+      const { response, raw } = await this.#attempt(body, timeoutMs, callerSignal);
+      if (response.ok) return raw;
 
       const retryable = response.status === 429 || response.status >= 500;
-      const excerpt = excerptOf(await response.text());
+      const excerpt = excerptOf(raw);
 
       if (retryable && attempt === 0) {
         await Bun.sleep(this.config.retryBackoffMs);
@@ -178,7 +177,11 @@ export class ChatClient {
     }
   }
 
-  async #attempt(body: string, timeoutMs: number, callerSignal?: AbortSignal): Promise<Response> {
+  async #attempt(
+    body: string,
+    timeoutMs: number,
+    callerSignal?: AbortSignal,
+  ): Promise<{ response: Response; raw: string }> {
     const controller = new AbortController();
     const onCallerAbort = () => controller.abort(callerSignal?.reason);
     callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
@@ -190,7 +193,7 @@ export class ChatClient {
     }, timeoutMs);
 
     try {
-      return await fetch(this.endpoint, {
+      const response = await fetch(this.endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
@@ -200,6 +203,11 @@ export class ChatClient {
         body,
         signal: controller.signal,
       });
+      // The body is read INSIDE the armed window: a vendor that sends headers
+      // and then stalls the stream is a timeout, not a hang (panel critique,
+      // drive kqrr2q4q). The same abort covers both halves of the exchange.
+      const raw = await response.text();
+      return { response, raw };
     } catch (cause) {
       if (timedOut) {
         throw new LlmTimeoutError({ baseUrl: this.config.baseUrl, timeoutMs });
@@ -281,8 +289,10 @@ export function parseCompletion(raw: string, url: string, requestedModel: string
  * Read the provider's `usage` object.
  *
  * Absent or unusable usage yields null — tolerated, per ADR-0002, because not
- * every OpenAI-compatible host reports it. Partial usage is filled with zeros
- * rather than NaN so the session ledger stays arithmetic.
+ * every OpenAI-compatible host reports it. A partial object is NEVER
+ * zero-filled (panel critique, drive kqrr2q4q — fabricated counts corrupt the
+ * token ledger): the third field is derived exactly when two are present
+ * (prompt + completion = total), and a lone field is no usage at all.
  */
 export function parseUsage(value: unknown): TokenUsage | null {
   if (typeof value !== "object" || value === null) return null;
@@ -291,13 +301,17 @@ export function parseUsage(value: unknown): TokenUsage | null {
   const prompt = numberOrNull(record.prompt_tokens);
   const completion = numberOrNull(record.completion_tokens);
   const total = numberOrNull(record.total_tokens);
-  if (prompt === null && completion === null && total === null) return null;
 
-  return {
-    prompt_tokens: prompt ?? 0,
-    completion_tokens: completion ?? 0,
-    total_tokens: total ?? 0,
-  };
+  if (prompt !== null && completion !== null) {
+    return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: total ?? prompt + completion };
+  }
+  if (total !== null && prompt !== null) {
+    return { prompt_tokens: prompt, completion_tokens: total - prompt, total_tokens: total };
+  }
+  if (total !== null && completion !== null) {
+    return { prompt_tokens: total - completion, completion_tokens: completion, total_tokens: total };
+  }
+  return null;
 }
 
 function numberOrNull(value: unknown): number | null {

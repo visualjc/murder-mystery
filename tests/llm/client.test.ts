@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatClient } from "../../src/llm/client.ts";
+import { ChatClient, parseUsage } from "../../src/llm/client.ts";
 import {
   LlmHttpError,
   LlmNetworkError,
@@ -129,7 +129,7 @@ describe("ChatClient — token accounting", () => {
     }
   });
 
-  test("a partial usage object is filled with zeros rather than NaN", async () => {
+  test("a lone-field usage object is treated as no usage — never zero-filled (panel fix)", async () => {
     const vendor = startFakeVendor(() =>
       completionResponse({ content: "partial", usage: { total_tokens: 9 } }),
     );
@@ -137,8 +137,9 @@ describe("ChatClient — token accounting", () => {
       const client = clientFor(vendor.baseUrl);
       const result = await client.chat([{ role: "user", content: "hi" }]);
       console.log("[partial usage] ->", result.usage);
-      expect(result.usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 9 });
-      expect(client.usage.callsWithUsage).toBe(1);
+      expect(result.usage).toBeNull();
+      expect(client.usage.callsWithUsage).toBe(0);
+      expect(client.usage.callsWithoutUsage).toBe(1);
     } finally {
       await vendor.stop();
     }
@@ -510,5 +511,69 @@ describe("ChatClient — tryChat, the degradable path for the game loop", () => 
     console.log("[tryChat network] ->", { ok: outcome.ok, error: outcome.ok ? null : outcome.error.name });
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.error).toBeInstanceOf(LlmNetworkError);
+  });
+});
+
+describe("ChatClient — panel-accepted fixes (drive kqrr2q4q)", () => {
+  // codex panel critique 1: the timer used to be cleared when headers
+  // arrived, so a vendor that stalls mid-BODY hung the call forever (or let
+  // a bare AbortError escape tryChat as an untyped error).
+  test("a vendor that sends headers then stalls the body still times out as LlmTimeoutError", async () => {
+    const vendor = startFakeVendor(() => {
+      const stalled = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"choices":[{"message":{"content":"'));
+          // never closes, never enqueues again — headers are out, body stalls
+        },
+      });
+      return new Response(stalled, {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    try {
+      const client = clientFor(vendor.baseUrl, { timeoutMs: 150 });
+      const started = Date.now();
+      let thrown: unknown;
+      try {
+        await client.chat([{ role: "user", content: "stall" }]);
+      } catch (error) {
+        thrown = error;
+      }
+      const elapsed = Date.now() - started;
+      console.log("[stalled body] elapsed ms ->", elapsed, "error ->", (thrown as Error)?.message);
+      expect(thrown).toBeInstanceOf(LlmTimeoutError);
+      expect(elapsed).toBeLessThan(5_000);
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  // codex panel critique 2: partial usage used to be zero-filled, silently
+  // corrupting the token ledger with fabricated counts.
+  test("parseUsage refuses to fabricate: one lone field is null, two fields derive the third", () => {
+    console.log("[usage strictness] lone total ->", parseUsage({ total_tokens: 100 }));
+    expect(parseUsage({ total_tokens: 100 })).toBeNull();
+    expect(parseUsage({ prompt_tokens: 30 })).toBeNull();
+    expect(parseUsage({ prompt_tokens: 30, completion_tokens: 12 })).toEqual({
+      prompt_tokens: 30,
+      completion_tokens: 12,
+      total_tokens: 42,
+    });
+    expect(parseUsage({ prompt_tokens: 30, total_tokens: 42 })).toEqual({
+      prompt_tokens: 30,
+      completion_tokens: 12,
+      total_tokens: 42,
+    });
+    expect(parseUsage({ completion_tokens: 12, total_tokens: 42 })).toEqual({
+      prompt_tokens: 30,
+      completion_tokens: 12,
+      total_tokens: 42,
+    });
+    expect(parseUsage({ prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 })).toEqual({
+      prompt_tokens: 30,
+      completion_tokens: 12,
+      total_tokens: 42,
+    });
   });
 });
