@@ -13,8 +13,8 @@ import { describe, expect, test } from 'bun:test';
 import { ROOMS, SUSPECTS, WEAPONS, type Card } from '../../src/engine/cards.ts';
 import { makeSuggestion } from '../../src/engine/actions.ts';
 import { inRoom } from '../../src/engine/board.ts';
-import { playerView } from '../../src/engine/view.ts';
-import type { GameState } from '../../src/engine/types.ts';
+import { describeEvent, playerView } from '../../src/engine/view.ts';
+import type { GameEvent, GameState } from '../../src/engine/types.ts';
 import { CANNED_SCENARIO } from '../../src/gm/scenario.ts';
 import { askSuspect, visibleFactsFor } from '../../src/gm/qa.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
@@ -37,6 +37,24 @@ function loadedGame(): GameState {
   state = placeToken(state, 'p1', inRoom('Library'));
   state = placeToken(state, 'p2', inRoom('Lounge'));
   return state;
+}
+
+/**
+ * A suggestion by p2 that p3 refutes. p1 — the asker in these tests — saw that
+ * a refutation happened and is entitled to say so; the card, the suggested
+ * triple and the room it was made in are not p1's to repeat.
+ */
+function refutedElsewhere(): GameState {
+  return makeSuggestion(standingInRoom(arrangedGame(), 'p2', 'Kitchen'), {
+    suspect: 'Reverend Green',
+    weapon: 'Dagger',
+  });
+}
+
+function eventOfType(state: GameState, type: GameEvent['type']): GameEvent {
+  const event = state.events.find((candidate) => candidate.type === type);
+  if (!event) throw new Error(`fixture has no ${type} event`);
+  return event;
 }
 
 describe('the prompt carries only what the asker may know', () => {
@@ -130,7 +148,88 @@ describe('the prompt carries only what the asker may know', () => {
   });
 });
 
+/**
+ * A persona that cannot refer to anything that has happened is a persona with
+ * nothing to say. The asker's OWN visible history is, by construction,
+ * information the asker already holds — but only the part of it that names no
+ * card a player CHOSE: a suggestion names three arbitrary cards and is the
+ * single easiest way to walk the answer into a prompt.
+ */
+describe('the asker’s own history reaches the persona', () => {
+  test('what the asker saw is quoted in the engine’s own words', async () => {
+    const state = loadedGame();
+    const vendor = startFakeVendor(() => completionResponse({ content: 'I remember it well.' }));
+    try {
+      await askSuspect(clientFor(vendor.baseUrl), {
+        scenario: CANNED_SCENARIO,
+        view: playerView(state, 'p1'),
+        suspect: 'Colonel Mustard',
+        question: QUESTION,
+      });
+      const prompt = promptTextOf(vendor.requests[0]!);
+      console.log('[qa history] ->', prompt);
+
+      expect(prompt).toContain(describeEvent(eventOfType(state, 'game-started')));
+      expect(prompt).toContain(describeEvent(eventOfType(state, 'suggestion-unrefuted')));
+      // ... but never the suggestion itself: it names all three answers.
+      expect(prompt).not.toContain(describeEvent(eventOfType(state, 'suggestion-made')));
+      expect(prompt).not.toContain(describeEvent(eventOfType(state, 'token-relocated')));
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('a refutation between others is told as p1 saw it — without the card', async () => {
+    const state = refutedElsewhere();
+    const vendor = startFakeVendor(() => completionResponse({ content: 'I saw nothing.' }));
+    try {
+      await askSuspect(clientFor(vendor.baseUrl), {
+        scenario: CANNED_SCENARIO,
+        view: playerView(state, 'p1'),
+        suspect: 'Mrs. White',
+        question: QUESTION,
+      });
+      const body = JSON.stringify(vendor.requests[0]!.body);
+      console.log('[qa history refuted] ->', promptTextOf(vendor.requests[0]!));
+
+      expect(body).toContain(describeEvent(eventOfType(state, 'suggestion-refuted')));
+      // The suggested triple stays out, room included.
+      for (const card of ['Reverend Green', 'Dagger', 'Kitchen']) {
+        expect(body).not.toContain(card);
+      }
+    } finally {
+      await vendor.stop();
+    }
+  });
+});
+
 describe('visibleFactsFor', () => {
+  test('carries the asker’s visible history, card-bearing events removed', () => {
+    const state = refutedElsewhere();
+    const facts = visibleFactsFor(playerView(state, 'p1'), 'Mrs. White');
+    console.log('[qa history facts] ->', facts.recentHistory);
+
+    expect(facts.recentHistory).toEqual([
+      describeEvent(eventOfType(state, 'game-started')),
+      describeEvent(eventOfType(state, 'turn-started')),
+      describeEvent(eventOfType(state, 'suggestion-refuted')),
+    ]);
+  });
+
+  test('a long game is clamped to the most recent 20 lines', () => {
+    const state = refutedElsewhere();
+    const rolled = eventOfType(state, 'game-started');
+    // A real event object, repeated: a long log without playing 30 real turns.
+    const view = playerView(state, 'p1');
+    const facts = visibleFactsFor(
+      { ...view, events: [...Array.from({ length: 30 }, () => rolled), ...view.events] },
+      'Mrs. White',
+    );
+
+    expect(facts.recentHistory).toHaveLength(20);
+    expect(facts.recentHistory.at(-1)).toBe(describeEvent(eventOfType(state, 'suggestion-refuted')));
+  });
+
   test('reports positions and counts, never cards in hands', () => {
     const facts = visibleFactsFor(playerView(loadedGame(), 'p1'), 'Colonel Mustard');
     console.log('[qa facts] ->', facts);

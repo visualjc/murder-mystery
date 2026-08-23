@@ -14,17 +14,25 @@
  *   - every hand, including the asker's — a suspect has no business knowing
  *     which cards anyone holds, and passing them would put six card names into
  *     a prompt for no gain;
- *   - the event log — suggestions name arbitrary cards, so the log is the
- *     single easiest way to leak the answer into a prompt;
+ *   - every event that names a card a PLAYER CHOSE: a suggestion and the token
+ *     relocations it causes name three arbitrary cards, a shown refutation card
+ *     is somebody's hand, and an accusation or the game's end names the case
+ *     file itself. A suggester who names the true triple and goes unrefuted has
+ *     all three answers in their own visible log, so "the asker already knows
+ *     it" does not make it safe to paste;
  *   - weapon and non-player token positions — same reason, less obviously.
  *
  * What it includes is public and already on the player's screen: the turn
  * number, where the asked suspect and the asker stand, who is still in the
- * running, and how many suggestions have been heard (counts, never contents).
+ * running, how many suggestions have been heard (counts, never contents), and
+ * the asker's own recent history of movement and turn structure — the part of
+ * the log that names no chosen card, so a persona can refer to what happened
+ * without the log becoming a channel for the answer.
  */
 
 import type { Suspect } from '../engine/cards.ts';
-import { describePosition, type PlayerView } from '../engine/view.ts';
+import type { GameEvent } from '../engine/types.ts';
+import { describeEvent, describePosition, type PlayerView } from '../engine/view.ts';
 import type { ChatClient, ChatMessage } from '../llm/index.ts';
 import type { Scenario } from './scenario.ts';
 
@@ -40,6 +48,11 @@ export type VisibleFacts = {
   /** How many suggestions this seat has heard. A count — never the cards. */
   readonly suggestionsHeard: number;
   readonly unrefutedSuggestionsHeard: number;
+  /**
+   * The asker's own recent history in the engine's own sentences: movement and
+   * turn structure only, most recent last, at most `HISTORY_LIMIT` lines.
+   */
+  readonly recentHistory: readonly string[];
 };
 
 export type SuspectAnswer = {
@@ -50,6 +63,40 @@ export type SuspectAnswer = {
 
 const MAX_ANSWER_LENGTH = 600;
 const MAX_QUESTION_LENGTH = 400;
+/** Enough history to have a conversation; not enough to bloat every prompt. */
+const HISTORY_LIMIT = 20;
+
+/**
+ * Event types whose plain sentence names no card a player chose — who moved
+ * where, whose turn it was, that a refutation happened and by whom. Rooms named
+ * here are token positions, which the whole table can see on the board. Every
+ * type listed is public knowledge in the engine (only `refutation-card-shown`
+ * is addressed to particular players), which is what lets the prompt present
+ * these lines as what the house has seen rather than what the asker alone saw.
+ *
+ * The complement is the exclusion list in this module's header, and it is
+ * stated as an allow-list on purpose: a new event type is silently withheld
+ * until someone has decided it is safe, rather than silently pasted.
+ */
+const CARD_FREE_HISTORY: ReadonlySet<GameEvent['type']> = new Set([
+  'game-started',
+  'turn-started',
+  'rolled',
+  'moved',
+  'secret-passage',
+  'suggestion-refuted',
+  'suggestion-unrefuted',
+  'player-eliminated',
+  'turn-ended',
+] satisfies GameEvent['type'][]);
+
+/** The asker's own log, minus every line that would name a chosen card. */
+function recentHistoryOf(events: readonly GameEvent[]): string[] {
+  return events
+    .filter((event) => CARD_FREE_HISTORY.has(event.type))
+    .slice(-HISTORY_LIMIT)
+    .map(describeEvent);
+}
 
 /** The whole fact set a suspect is told about. Nothing else reaches the prompt. */
 export function visibleFactsFor(view: PlayerView, suspect: Suspect): VisibleFacts {
@@ -73,6 +120,7 @@ export function visibleFactsFor(view: PlayerView, suspect: Suspect): VisibleFact
     stillInTheRunning: seats,
     suggestionsHeard,
     unrefutedSuggestionsHeard,
+    recentHistory: recentHistoryOf(view.events),
   };
 }
 
@@ -112,6 +160,9 @@ export function questionMessages(
         `- ${facts.askerCharacter}, who is asking, is in ${facts.askerLocation}.`,
         `- Still under suspicion: ${facts.stillInTheRunning.join(', ')}.`,
         `- Accusations aired so far: ${facts.suggestionsHeard}, of which ${facts.unrefutedSuggestionsHeard} went unanswered.`,
+        ...(facts.recentHistory.length === 0
+          ? []
+          : ['', 'What the house has seen so far, in order:', ...facts.recentHistory.map((line) => `- ${line}`)]),
         '',
         `${facts.askerCharacter} asks you: ${clamp(question, MAX_QUESTION_LENGTH)}`,
       ].join('\n'),
