@@ -47,6 +47,10 @@ const MAX_LINE_LENGTH = 400;
  * rather than instead of it.
  */
 export const CRITICAL_EVENTS: ReadonlySet<GameEvent['type']> = new Set([
+  // The suggested TRIPLE is deduction input: a narration that renames the
+  // suspect, weapon, or room corrupts every notebook downstream (epic review
+  // round 2, codex) — so the engine states it even when the model also does.
+  'suggestion-made',
   'suggestion-refuted',
   'suggestion-unrefuted',
   'refutation-card-shown',

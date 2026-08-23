@@ -214,11 +214,13 @@ export class GameMaster {
 export function formatUsageLedger(usage: SessionUsage): string[] {
   if (usage.calls === 0 && usage.failures === 0) return ['No LLM calls were made this session.'];
 
-  const failed = `${usage.failures} failed ${usage.failures === 1 ? 'attempt' : 'attempts'}`;
+  // `failures` counts failed CALLS (a call may span a retry, i.e. two
+  // exchanges) — naming them attempts misled on units (epic round 2, codex).
+  const failed = `${usage.failures} failed ${usage.failures === 1 ? 'call' : 'calls'}`;
   if (usage.calls === 0) {
     // Nothing completed, so every exchange failed: naming the failed calls alone
     // would still hide a retry inside one of them.
-    const exchanges = usage.attempts > usage.failures ? ` over ${usage.attempts} exchanges` : '';
+    const exchanges = ` over ${usage.attempts} ${usage.attempts === 1 ? 'exchange' : 'exchanges'}`;
     return [
       `LLM usage: 0 completed calls, ${failed}${exchanges} — no tokens were reported for this session.`,
     ];

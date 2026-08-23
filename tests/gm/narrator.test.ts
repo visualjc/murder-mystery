@@ -247,6 +247,7 @@ describe('CRITICAL_EVENTS', () => {
       'game-over',
       'player-eliminated',
       'refutation-card-shown',
+      'suggestion-made',
       'suggestion-refuted',
       'suggestion-unrefuted',
     ]);
@@ -267,5 +268,12 @@ describe('CRITICAL_EVENTS', () => {
       expect(sentence.length).toBeGreaterThan(0);
       expect(sentence).toContain(' ');
     }
+  });
+});
+
+describe('CRITICAL_EVENTS — epic review round 2', () => {
+  test('suggestion-made is authoritative: the suggested triple is deduction input a model may not rewrite', () => {
+    console.log('[critical set] has suggestion-made ->', CRITICAL_EVENTS.has('suggestion-made'));
+    expect(CRITICAL_EVENTS.has('suggestion-made')).toBe(true);
   });
 });

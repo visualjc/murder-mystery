@@ -288,7 +288,7 @@ describe('with a game master', () => {
       expect(vendor.requests).toHaveLength(4);
       // Every call failed: no tokens can be reported, but the attempts are.
       expect(text).not.toContain('No LLM calls were made this session.');
-      expect(text).toMatch(/LLM usage: 0 completed calls, \d+ failed attempts?/);
+      expect(text).toMatch(/LLM usage: 0 completed calls, \d+ failed calls?/);
     } finally {
       await vendor.stop();
     }

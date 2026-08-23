@@ -271,7 +271,7 @@ describe('a whole game played through the game master', () => {
       // 7. The ledger is the vendor's own numbers, summed. Every completed call
       //    reported usage; the refused one is reported as an attempt, not a
       //    completion, and contributes no tokens. The attempt count is on the
-      //    line too — this assertion used to read `N calls, 1 failed attempt,`,
+      //    line too — this assertion used to read `N calls, 1 failed call,`,
       //    which named the failed call but hid how many exchanges the session
       //    actually spent (panel finding, codex).
       const totals = served.reduce(

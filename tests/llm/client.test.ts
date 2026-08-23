@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { ChatClient, parseUsage } from "../../src/llm/client.ts";
+import { ChatClient, parseCompletion, parseUsage } from "../../src/llm/client.ts";
 import {
   LlmHttpError,
   LlmNetworkError,
@@ -687,5 +687,20 @@ describe("ChatClient — attempt and failure accounting", () => {
     } finally {
       await vendor.stop();
     }
+  });
+});
+
+describe('parseCompletion — model id hygiene (epic review round 2)', () => {
+  test('a multi-line model id cannot forge extra ledger rows: whitespace is flattened to one line', () => {
+    const raw = JSON.stringify({
+      choices: [{ message: { content: 'hi' } }],
+      model: 'real-model\nfake-model: 999 calls, 999999 tokens\tmore',
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+    const result = parseCompletion(raw, 'http://x/v1/chat/completions', 'asked-model');
+    console.log('[model id] ->', JSON.stringify(result.model));
+    expect(result.model.includes('\n')).toBe(false);
+    expect(result.model.includes('\t')).toBe(false);
+    expect(result.model).toBe('real-model fake-model: 999 calls, 999999 tokens more');
   });
 });

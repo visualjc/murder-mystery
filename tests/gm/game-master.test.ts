@@ -278,9 +278,9 @@ describe('formatUsageLedger', () => {
    * Panel finding (agy), and the gap the builder journaled against itself: a
    * session where every call failed used to print "No LLM calls were made",
    * which is false — the requests were made, and the vendor may well have
-   * charged for them. Silence about a failed attempt is not honesty.
+   * charged for them. Silence about a failed call is not honesty.
    */
-  test('a session where every call failed reports the failed attempts, not silence', () => {
+  test('a session where every call failed reports the failed calls, not silence', () => {
     const lines = formatUsageLedger({
       calls: 0,
       attempts: 4,
@@ -293,12 +293,12 @@ describe('formatUsageLedger', () => {
       byModel: {},
     });
     console.log('[ledger all-failure]\n' + lines.join('\n'));
-    expect(lines.join('\n')).toContain('0 completed calls, 3 failed attempts');
+    expect(lines.join('\n')).toContain('0 completed calls, 3 failed calls');
     expect(lines.join('\n')).not.toContain('No LLM calls were made');
   });
 
   /**
-   * This assertion used to read `3 calls, 1 failed attempt,` — which named the
+   * This assertion used to read `3 calls, 1 failed call,` — which named the
    * failed CALL and said nothing about the two extra HTTP exchanges the same
    * session paid for. That is the behaviour the panel (codex) rejected: the
    * ledger ignored `attempts`, so a retry was invisible. The replacement pins

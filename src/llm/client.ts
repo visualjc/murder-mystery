@@ -311,9 +311,13 @@ export function parseCompletion(raw: string, url: string, requestedModel: string
 
   // The model id is the one vendor-supplied string that is NOT prose: it becomes
   // a ledger row printed at the end of the session, so it is stripped of
-  // terminal control sequences here, where it enters (panel finding, codex).
+  // terminal control sequences here, where it enters (panel finding, codex) —
+  // AND flattened to one line, because sanitize keeps LF/tab for prose and a
+  // multi-line id would forge extra ledger rows (epic review round 2).
   // The reply text is not sanitized here on purpose — see src/gm/text.ts.
-  const echoed = sanitizeVendorText(typeof record.model === "string" ? record.model : "");
+  const echoed = sanitizeVendorText(typeof record.model === "string" ? record.model : "")
+    .replace(/\s+/g, " ")
+    .trim();
   const model = echoed.length > 0 ? echoed : requestedModel;
 
   return { text, usage: parseUsage(record.usage), model };
