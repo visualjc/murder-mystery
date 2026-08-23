@@ -297,6 +297,13 @@ describe('formatUsageLedger', () => {
     expect(lines.join('\n')).not.toContain('No LLM calls were made');
   });
 
+  /**
+   * This assertion used to read `3 calls, 1 failed attempt,` — which named the
+   * failed CALL and said nothing about the two extra HTTP exchanges the same
+   * session paid for. That is the behaviour the panel (codex) rejected: the
+   * ledger ignored `attempts`, so a retry was invisible. The replacement pins
+   * the attempt count alongside it.
+   */
   test('failed attempts alongside completed calls are named on the total line', () => {
     const lines = formatUsageLedger({
       calls: 3,
@@ -310,7 +317,62 @@ describe('formatUsageLedger', () => {
       byModel: { 'some-model': { calls: 3, prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } },
     });
     console.log('[ledger with failures]\n' + lines.join('\n'));
-    expect(lines[0]).toContain('3 calls, 1 failed attempt,');
+    expect(lines[0]).toContain('LLM usage: 3 calls (5 attempts, 1 failed), 15 tokens');
+  });
+
+  /**
+   * The finding itself (panel, codex): one 429 retried into a success is one
+   * call, no failure — and two exchanges. A ledger that printed only `1 call`
+   * told the player the vendor was asked once, when it was asked twice and may
+   * have been paid for both.
+   */
+  test('a retry that then succeeded shows the extra exchange even with no failed call', () => {
+    const lines = formatUsageLedger({
+      calls: 1,
+      attempts: 2,
+      failures: 0,
+      callsWithUsage: 1,
+      callsWithoutUsage: 0,
+      prompt_tokens: 8,
+      completion_tokens: 4,
+      total_tokens: 12,
+      byModel: { 'some-model': { calls: 1, prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 } },
+    });
+    console.log('[ledger retry-then-success]\n' + lines.join('\n'));
+    expect(lines[0]).toContain('LLM usage: 1 call (2 attempts), 12 tokens');
+  });
+
+  /**
+   * The same thing over the wire, so the numbers come from a real exchange
+   * rather than a hand-written record: the vendor refuses once with a 429, the
+   * transport retries, and the session is one call across two attempts.
+   */
+  test('a real 429-then-success session renders its attempt count', async () => {
+    const vendor = startFakeVendor((_request, index) =>
+      index === 0
+        ? errorResponse(429, 'slow down')
+        : completionResponse({
+            content: JSON.stringify(['A door closes somewhere upstairs.']),
+            model: MODELS.narration,
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          }),
+    );
+    try {
+      const client = clientFor(vendor.baseUrl, { retryBackoffMs: 1 });
+      const master = new GameMaster(client, { models: MODELS });
+      const state = standingInRoom(arrangedGame(), 'p1', 'Library');
+      await master.narrate(playerView(state, 'p1'), state.events.slice(-1));
+
+      expect(client.usage.calls).toBe(1);
+      expect(client.usage.attempts).toBe(2);
+      expect(client.usage.failures).toBe(0);
+
+      const lines = formatUsageLedger(master.usage);
+      console.log('[ledger live retry]\n' + lines.join('\n'));
+      expect(lines[0]).toContain('LLM usage: 1 call (2 attempts), 15 tokens');
+    } finally {
+      await vendor.stop();
+    }
   });
 
   test('calls the provider did not report usage for are named, not hidden', () => {

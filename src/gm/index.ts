@@ -203,18 +203,32 @@ export class GameMaster {
  * calls (panel finding, agy): a request that errored still left the machine and
  * may still have been paid for, so a session where everything failed reports
  * its failed attempts rather than claiming no call was made.
+ *
+ * And so are RETRIES (panel finding, codex): `attempts` counts HTTP exchanges,
+ * `calls` counts completions, and a 429 retried into a success leaves those two
+ * numbers apart with no failed CALL to show for it. Reporting the call alone
+ * told the player the vendor was asked once when it was asked twice, so the
+ * attempt count is printed whenever it differs from the call count.
  */
 export function formatUsageLedger(usage: SessionUsage): string[] {
   if (usage.calls === 0 && usage.failures === 0) return ['No LLM calls were made this session.'];
 
   const failed = `${usage.failures} failed ${usage.failures === 1 ? 'attempt' : 'attempts'}`;
   if (usage.calls === 0) {
-    return [`LLM usage: 0 completed calls, ${failed} — no tokens were reported for this session.`];
+    // Nothing completed, so every exchange failed: naming the failed calls alone
+    // would still hide a retry inside one of them.
+    const exchanges = usage.attempts > usage.failures ? ` over ${usage.attempts} exchanges` : '';
+    return [
+      `LLM usage: 0 completed calls, ${failed}${exchanges} — no tokens were reported for this session.`,
+    ];
   }
 
+  const extra =
+    usage.attempts <= usage.calls
+      ? ''
+      : ` (${usage.attempts} attempts${usage.failures === 0 ? '' : `, ${usage.failures} failed`})`;
   const lines = [
-    `LLM usage: ${usage.calls} ${usage.calls === 1 ? 'call' : 'calls'}, ` +
-      (usage.failures === 0 ? '' : `${failed}, `) +
+    `LLM usage: ${usage.calls} ${usage.calls === 1 ? 'call' : 'calls'}${extra}, ` +
       `${usage.total_tokens} tokens (${usage.prompt_tokens} prompt + ${usage.completion_tokens} completion)`,
   ];
   for (const model of Object.keys(usage.byModel).sort()) {

@@ -269,7 +269,10 @@ describe('a whole game played through the game master', () => {
 
       // 7. The ledger is the vendor's own numbers, summed. Every completed call
       //    reported usage; the refused one is reported as an attempt, not a
-      //    completion, and contributes no tokens.
+      //    completion, and contributes no tokens. The attempt count is on the
+      //    line too — this assertion used to read `N calls, 1 failed attempt,`,
+      //    which named the failed call but hid how many exchanges the session
+      //    actually spent (panel finding, codex).
       const totals = served.reduce(
         (sum, usage) => ({
           prompt: sum.prompt + usage.prompt_tokens,
@@ -279,9 +282,10 @@ describe('a whole game played through the game master', () => {
         { prompt: 0, completion: 0, total: 0 },
       );
       expect(vendor.requests).toHaveLength(served.length + 1);
+      expect(client.usage.attempts).toBe(vendor.requests.length);
       expect(text).toContain(
-        `LLM usage: ${served.length} calls, 1 failed attempt, ${totals.total} tokens ` +
-          `(${totals.prompt} prompt + ${totals.completion} completion)`,
+        `LLM usage: ${served.length} calls (${vendor.requests.length} attempts, 1 failed), ` +
+          `${totals.total} tokens (${totals.prompt} prompt + ${totals.completion} completion)`,
       );
       expect(text).toContain(
         `  test-model: ${served.length} calls, ${totals.total} tokens ` +
