@@ -6,7 +6,7 @@ Reading additional input from stdin...
 2026-08-23T04:00:36.407111Z ERROR codex_models_manager::cache: failed to load models cache: missing field `base_instructions` at line 97 column 5
 OpenAI Codex v0.144.4
 --------
-workdir: /Users/jimcarter/projects/personal_projects/murder-mystery-test
+workdir: ../murder-mystery-test
 model: gpt-5.6-sol
 provider: openai
 approval: on-request
@@ -61,7 +61,7 @@ The engine playthrough test now delegates to notebook.ts and its duplicate algor
 codex
 I’m using the code-review skill and Nahel’s brief to inspect the implementation against the stated constraints, then I’ll return only the two requested sentences.
 exec
-/bin/zsh -lc "sed -n '1,240p' /Users/jimcarter/.agents/skills/code-review/SKILL.md && NAHEL_ACTOR=agent:codex nahel brief && sed -n '1,240p' PRODUCT.md && sed -n '1,240p' CONTEXT.md" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "sed -n '1,240p' ~/.agents/skills/code-review/SKILL.md && NAHEL_ACTOR=agent:codex nahel brief && sed -n '1,240p' PRODUCT.md && sed -n '1,240p' CONTEXT.md" in ../murder-mystery-test
  exited 127 in 0ms:
 ---
 name: code-review
@@ -157,9 +157,9 @@ zsh:1: command not found: nahel
 codex
 The `nahel` executable is not on this shell’s PATH, so I’m resolving the repository’s local entry point and the exact four-commit diff before reviewing behavior.
 exec
-/bin/zsh -lc 'pwd; command -v nahel || true; ls -la; ls -la node_modules/.bin/nahel 2>/dev/null || true; git status --short --branch; git log --oneline --decorate -12; git branch --all --no-color; test -d .codegraph && echo CODEGRAPH_PRESENT || true' in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc 'pwd; command -v nahel || true; ls -la; ls -la node_modules/.bin/nahel 2>/dev/null || true; git status --short --branch; git log --oneline --decorate -12; git branch --all --no-color; test -d .codegraph && echo CODEGRAPH_PRESENT || true' in ../murder-mystery-test
  succeeded in 0ms:
-/Users/jimcarter/projects/personal_projects/murder-mystery-test
+../murder-mystery-test
 total 72
 drwxr-xr-x@ 17 jimcarter  staff   544 Aug 22 22:01 .
 drwxr-xr-x  24 jimcarter  staff   768 Aug 22 18:30 ..
@@ -229,7 +229,7 @@ ee6a364 fix(engine): endTurn refuses a turn whose mandatory roll and move is uns
   main
 
 exec
-/bin/zsh -lc "cat package.json; ls -la node_modules/.bin; rg -n 'nahel' package.json bun.lock .git/config .gitmodules 2>/dev/null || true; sed -n '1,260p' PRODUCT.md; sed -n '1,220p' CONTEXT.md; sed -n '1,260p' nahel/items/k0n64xb4.md" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "cat package.json; ls -la node_modules/.bin; rg -n 'nahel' package.json bun.lock .git/config .gitmodules 2>/dev/null || true; sed -n '1,260p' PRODUCT.md; sed -n '1,220p' CONTEXT.md; sed -n '1,260p' nahel/items/k0n64xb4.md" in ../murder-mystery-test
  succeeded in 0ms:
 {
   "name": "murder-mystery-test",
@@ -363,7 +363,7 @@ updated: 2026-08-23T03:34:05Z
 ---
 
 exec
-/bin/zsh -lc "git rev-parse d9ac7db; git diff --stat d9ac7db...HEAD; git log d9ac7db..HEAD --oneline; rg --files | sort; rg -n 'k0n64xb4|game-master|notebook|narrat|Q&A|scenario|opponent' docs nahel --glob '*.md' --glob '"'!nahel/journal/**'"' --glob '"'!nahel/runs/**'"' --glob '"'!nahel/playbooks/**'"' --glob '"'!nahel/workflows/**'"'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "git rev-parse d9ac7db; git diff --stat d9ac7db...HEAD; git log d9ac7db..HEAD --oneline; rg --files | sort; rg -n 'k0n64xb4|game-master|notebook|narrat|Q&A|scenario|opponent' docs nahel --glob '*.md' --glob '"'!nahel/journal/**'"' --glob '"'!nahel/runs/**'"' --glob '"'!nahel/playbooks/**'"' --glob '"'!nahel/workflows/**'"'" in ../murder-mystery-test
  succeeded in 0ms:
 d9ac7db3b03635a9ca0e64a51683c5b20e58f3c8
  src/gm/index.ts                  | 149 ++++++++++++++++++
@@ -559,7 +559,7 @@ docs/adr/0001-deterministic-engine-llm-narrator.md:48:  would let narration spoi
 nahel/items/6yxb3z7p.md:10:  - k0n64xb4
 
 exec
-/bin/zsh -lc "sed -n '1,420p' src/gm/opponent.ts" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "sed -n '1,420p' src/gm/opponent.ts" in ../murder-mystery-test
  succeeded in 0ms:
 /**
  * The opponent policy: the "simple game master" that plays the suspects the
@@ -891,7 +891,7 @@ export function playOpponentTurn(state: GameState, maxActions = 16): GameState {
 }
 
 exec
-/bin/zsh -lc "sed -n '1,260p' src/gm/notebook.ts" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "sed -n '1,260p' src/gm/notebook.ts" in ../murder-mystery-test
  succeeded in 0ms:
 /**
  * The deduction notebook: everything ONE seat can prove about where cards are.
@@ -1035,7 +1035,7 @@ export function buildNotebook(view: PlayerView): Notebook {
 }
 
 exec
-/bin/zsh -lc "sed -n '1,260p' src/gm/scenario.ts; sed -n '1,260p' src/gm/qa.ts" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "sed -n '1,260p' src/gm/scenario.ts; sed -n '1,260p' src/gm/qa.ts" in ../murder-mystery-test
  succeeded in 0ms:
 /**
  * The scenario: the fiction wrapped around a mechanically standard game.
@@ -1369,7 +1369,7 @@ export async function askSuspect(
 }
 
 exec
-/bin/zsh -lc "sed -n '1,320p' src/engine/types.ts; sed -n '1,320p' src/engine/view.ts; sed -n '1,420p' src/engine/actions.ts" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "sed -n '1,320p' src/engine/types.ts; sed -n '1,320p' src/engine/view.ts; sed -n '1,420p' src/engine/actions.ts" in ../murder-mystery-test
  succeeded in 0ms:
 /**
  * The engine's state value and event vocabulary.
@@ -2087,7 +2087,7 @@ export function makeAccusation(state: GameState, accusation: SolutionTriple): Ga
     room: accusation.room,
 
 exec
-/bin/zsh -lc "sed -n '1,180p' docs/adr/0001-deterministic-engine-llm-narrator.md; sed -n '1,180p' docs/adr/0002-openai-compatible-client.md; sed -n '1,220p' docs/adr/0003-cli-first-ui.md" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "sed -n '1,180p' docs/adr/0001-deterministic-engine-llm-narrator.md; sed -n '1,180p' docs/adr/0002-openai-compatible-client.md; sed -n '1,220p' docs/adr/0003-cli-first-ui.md" in ../murder-mystery-test
  succeeded in 0ms:
 # ADR-0001 — Deterministic engine, LLM narrator
 
@@ -2257,7 +2257,7 @@ engine still decides every outcome, and board geometry is still conveyed in
 text. Only the claim about how geometry is *modelled* is withdrawn.
 
 exec
-/bin/zsh -lc "sed -n '1,260p' src/gm/narrator.ts; sed -n '1,280p' src/gm/index.ts" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "sed -n '1,260p' src/gm/narrator.ts; sed -n '1,280p' src/gm/index.ts" in ../murder-mystery-test
  succeeded in 0ms:
 /**
  * The narrator: engine events in, prose out.
@@ -2533,7 +2533,7 @@ export function formatUsageLedger(usage: SessionUsage): string[] {
 }
 
 exec
-/bin/zsh -lc "nl -ba src/gm/scenario.ts | sed -n '1,260p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/gm/scenario.ts | sed -n '1,260p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * The scenario: the fiction wrapped around a mechanically standard game.
@@ -2708,9 +2708,9 @@ exec
    171	}
 
 exec
-/bin/zsh -lc "nl -ba src/gm/narrator.ts | sed -n '1,260p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/gm/narrator.ts | sed -n '1,260p'" in ../murder-mystery-test
 exec
-/bin/zsh -lc "nl -ba src/gm/index.ts | sed -n '1,300p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/gm/index.ts | sed -n '1,300p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * The LLM game master.
@@ -2988,7 +2988,7 @@ exec
    123	}
 
 exec
-/bin/zsh -lc "nl -ba src/gm/qa.ts | sed -n '1,280p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/gm/qa.ts | sed -n '1,280p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * In-fiction Q&A: the player asks one suspect one free-form question per turn,
@@ -3151,7 +3151,7 @@ exec
    159	}
 
 exec
-/bin/zsh -lc "nl -ba src/engine/view.ts | sed -n '1,320p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/engine/view.ts | sed -n '1,320p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * Projections of game state for consumers that must NOT see everything.
@@ -3336,9 +3336,9 @@ exec
    181	
 
 exec
-/bin/zsh -lc "nl -ba tests/gm/qa.test.ts | sed -n '1,260p'; nl -ba tests/gm/narrator.test.ts | sed -n '1,240p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba tests/gm/qa.test.ts | sed -n '1,260p'; nl -ba tests/gm/narrator.test.ts | sed -n '1,240p'" in ../murder-mystery-test
 exec
-/bin/zsh -lc "nl -ba src/llm/client.ts | sed -n '1,340p'; nl -ba src/llm/index.ts | sed -n '1,180p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/llm/client.ts | sed -n '1,340p'; nl -ba src/llm/index.ts | sed -n '1,180p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * In-fiction Q&A: one free-form question to one suspect, per turn.
@@ -4036,7 +4036,7 @@ exec
     44	} from "./errors.ts";
 
 exec
-/bin/zsh -lc "nl -ba src/engine/view.ts | sed -n '1,240p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/engine/view.ts | sed -n '1,240p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * Projections of game state for consumers that must NOT see everything.
@@ -4221,7 +4221,7 @@ exec
    181	
 
 exec
-/bin/zsh -lc "nl -ba src/gm/index.ts | sed -n '1,260p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/gm/index.ts | sed -n '1,260p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * The LLM game master.
@@ -4374,7 +4374,7 @@ exec
    149	}
 
 exec
-/bin/zsh -lc "nl -ba src/gm/narrator.ts | sed -n '90,220p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/gm/narrator.ts | sed -n '90,220p'" in ../murder-mystery-test
  succeeded in 0ms:
     90	    slots[index] = line.length > MAX_LINE_LENGTH ? `${line.slice(0, MAX_LINE_LENGTH)}…` : line;
     91	  }
@@ -4412,9 +4412,9 @@ exec
    123	}
 
 exec
-/bin/zsh -lc "nl -ba src/engine/view.ts | sed -n '240,520p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/engine/view.ts | sed -n '240,520p'" in ../murder-mystery-test
 exec
-/bin/zsh -lc "nl -ba tests/gm/notebook.test.ts | sed -n '1,280p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba tests/gm/notebook.test.ts | sed -n '1,280p'" in ../murder-mystery-test
  succeeded in 0ms:
  succeeded in 0ms:
      1	/**
@@ -4587,7 +4587,7 @@ exec
    168	});
 
 exec
-/bin/zsh -lc "nl -ba src/engine/types.ts | sed -n '1,360p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/engine/types.ts | sed -n '1,360p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * The engine's state value and event vocabulary.
@@ -4704,7 +4704,7 @@ exec
    113	}
 
 exec
-/bin/zsh -lc "nl -ba tests/gm/opponent.test.ts | sed -n '1,340p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba tests/gm/opponent.test.ts | sed -n '1,340p'" in ../murder-mystery-test
  succeeded in 0ms:
      1	/**
      2	 * The deterministic opponent policy — the "simple game master" driving the
@@ -4961,7 +4961,7 @@ exec
    253	});
 
 exec
-/bin/zsh -lc "nl -ba src/engine/board.ts | sed -n '180,380p'; nl -ba tests/gm/opponent.test.ts | sed -n '1,90p'; nl -ba tests/gm/game-master.test.ts | sed -n '1,260p'; git diff d9ac7db...HEAD -- src/gm src/engine tests/engine/playthrough.test.ts" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "nl -ba src/engine/board.ts | sed -n '180,380p'; nl -ba tests/gm/opponent.test.ts | sed -n '1,90p'; nl -ba tests/gm/game-master.test.ts | sed -n '1,260p'; git diff d9ac7db...HEAD -- src/gm src/engine tests/engine/playthrough.test.ts" in ../murder-mystery-test
  succeeded in 0ms:
    180	export function buildBoard(): Board {
    181	  const squares = new Map<string, CorridorSquare>();
@@ -6607,14 +6607,14 @@ index 46613f9..99b2426 100644
 codex
 I’m stress-checking the deterministic policy beyond the four happy-path seeds because termination and accusation safety are the highest-impact claims in this change.
 exec
-/bin/zsh -lc "bun -e 'import {createGame} from \"./src/engine/setup.ts\"; import {playOpponentTurn,refuteAsOpponent} from \"./src/gm/opponent.ts\"; for (const n of [3,4,5,6]) { let failures=[]; let max=0; for(let i=0;i<300;i++){let s=createGame({seed:"'`fuzz-${n}-${i}`,playerCount:n}); let k=0; try { while(!s.over&&k<4000){s=s.pendingRefutation===null?playOpponentTurn(s):refuteAsOpponent(s); k++} } catch(e){failures.push(`${i}:throw:${e}`); continue} max=Math.max(max,k); const acc=s.events.filter(e=>e.type==="accusation-made"); if(!s.over||acc.length!==1||!acc[0].correct) failures.push(`${i}:over=${s.over}:steps=${k}:acc=${JSON.stringify(acc)}`)} console.log(n,{failures:failures.slice(0,5),count:failures.length,max}) }'"'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "bun -e 'import {createGame} from \"./src/engine/setup.ts\"; import {playOpponentTurn,refuteAsOpponent} from \"./src/gm/opponent.ts\"; for (const n of [3,4,5,6]) { let failures=[]; let max=0; for(let i=0;i<300;i++){let s=createGame({seed:"'`fuzz-${n}-${i}`,playerCount:n}); let k=0; try { while(!s.over&&k<4000){s=s.pendingRefutation===null?playOpponentTurn(s):refuteAsOpponent(s); k++} } catch(e){failures.push(`${i}:throw:${e}`); continue} max=Math.max(max,k); const acc=s.events.filter(e=>e.type==="accusation-made"); if(!s.over||acc.length!==1||!acc[0].correct) failures.push(`${i}:over=${s.over}:steps=${k}:acc=${JSON.stringify(acc)}`)} console.log(n,{failures:failures.slice(0,5),count:failures.length,max}) }'"'" in ../murder-mystery-test
  exited 127 in 0ms:
 zsh:1: command not found: bun
 
 exec
-/bin/zsh -lc "command -v bun || true; ls -l /Users/jimcarter/.bun/bin/bun 2>/dev/null || true; ls -la .drive | sed -n '1,120p'; rg -n 'nahel|bun' .drive --glob '"'!**/*.jsonl'"' | head -80" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "command -v bun || true; ls -l ~/.bun/bin/bun 2>/dev/null || true; ls -la .drive | sed -n '1,120p'; rg -n 'nahel|bun' .drive --glob '"'!**/*.jsonl'"' | head -80" in ../murder-mystery-test
  succeeded in 0ms:
--rwxr-xr-x@ 1 jimcarter  staff  60953744 Feb 26 00:03 /Users/jimcarter/.bun/bin/bun
+-rwxr-xr-x@ 1 jimcarter  staff  60953744 Feb 26 00:03 ~/.bun/bin/bun
 total 1232
 drwxr-xr-x@ 28 jimcarter  staff     896 Aug 22 23:01 .
 drwxr-xr-x@ 17 jimcarter  staff     544 Aug 22 22:01 ..
@@ -6683,7 +6683,7 @@ drwxr-xr-x@ 17 jimcarter  staff     544 Aug 22 22:01 ..
 .drive/eng-crit-codex-raw.txt:41:Test count: 172 engine tests green (5,144 assertions). Whole repo `bun test` 203 green
 .drive/eng-crit-codex-raw.txt:42:including the sibling LLM slice. `bunx tsc --noEmit` clean under the strict tsconfig.
 .drive/eng-crit-codex-raw.txt:108:- **Data Clumps** — the same few fields or params keep travelling together (a type wanting to be born). → bundle them into one type, pass that.
-.drive/eng-crit-codex-raw.txt:152:/bin/zsh -lc 'nahel brief' in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+.drive/eng-crit-codex-raw.txt:152:/bin/zsh -lc 'nahel brief' in ../murder-mystery-test
 .drive/eng-crit-codex-raw.txt:154:zsh:1: command not found: nahel
 .drive/eng-crit-codex-raw.txt:159:/bin/zsh -lc "command -v nahel || true
 .drive/eng-crit-codex-raw.txt:160:rg --files -g 'nahel*' -g 'package.json' -g 'bun.lock*' -g 'PRODUCT.md' -g 'CONTEXT.md' -g 'AGENTS.md' | sed -n '1,160p'
@@ -6722,12 +6722,12 @@ drwxr-xr-x@ 17 jimcarter  staff     544 Aug 22 22:01 ..
 .drive/eng-crit-codex-raw.txt:268:8. The project is nahel-driven: work is decomposed into nahel items, dispatched through the routing map, and journaled. Founding and planning happen in nahel, not in side documents.
 .drive/eng-crit-codex-raw.txt:285:constitution later by signing it. See nahel's own
 .drive/eng-crit-codex-raw.txt:300:- **2026-08-22** — Skeleton scaffolded by `nahel init`; awaiting the maintainer's first review and sign-off.
-.drive/eng-crit-codex-raw.txt:333:/bin/zsh -lc "rg -n '\"nahel\"|nahel@|bin/nahel|packages/nahel' bun.lock package.json /Users/jimcarter/projects -g 'package.json' -g 'bun.lock' -g 'README.md' -g '"'!node_modules'"' -g '"'!dist'"' | sed -n '1,200p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
-.drive/eng-crit-codex-raw.txt:336:/Users/jimcarter/projects/personal_projects/nahel/package.json:2:  "name": "nahel",
+.drive/eng-crit-codex-raw.txt:333:/bin/zsh -lc "rg -n '\"nahel\"|nahel@|bin/nahel|packages/nahel' bun.lock package.json ~/projects -g 'package.json' -g 'bun.lock' -g 'README.md' -g '"'!node_modules'"' -g '"'!dist'"' | sed -n '1,200p'" in ../murder-mystery-test
+.drive/eng-crit-codex-raw.txt:336:../nahel/package.json:2:  "name": "nahel",
 
 2026-08-23T04:03:02.786396Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
 exec
-/bin/zsh -lc "sed -n '1,120p' .drive/gm-crit-codex-raw.txt; sed -n '1,160p' .drive/gm-crit-agy-raw.txt; sed -n '1,220p' .drive/gm-panel-plan.txt; ls -l /Users/jimcarter/projects/personal_projects/nahel/bin 2>/dev/null || true; cat /Users/jimcarter/projects/personal_projects/nahel/package.json | sed -n '1,100p'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "sed -n '1,120p' .drive/gm-crit-codex-raw.txt; sed -n '1,160p' .drive/gm-crit-agy-raw.txt; sed -n '1,220p' .drive/gm-panel-plan.txt; ls -l ../nahel/bin 2>/dev/null || true; cat ../nahel/package.json | sed -n '1,100p'" in ../murder-mystery-test
  succeeded in 0ms:
 ⚠ preflight skipped (--no-preflight): dispatching without proving the run contract's healthcheck can run here. If the worker fails in confusing ways, re-run without the flag to see whether the environment is the cause.
 ⚠ preflight skipped (--no-preflight): dispatching without proving the run contract's healthcheck can run here. If the worker fails in confusing ways, re-run without the flag to see whether the environment is the cause.
@@ -6974,11 +6974,11 @@ The engine playthrough test now delegates to notebook.ts and its duplicate algor
 2026-08-23T04:03:09.484764Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
 2026-08-23T04:03:14.111246Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
 exec
-/bin/zsh -lc "/Users/jimcarter/.bun/bin/bun -e 'import {createGame} from \"./src/engine/setup.ts\"; import {playOpponentTurn,refuteAsOpponent} from \"./src/gm/opponent.ts\"; for (const n of [3,4,5,6]) { let failures=[]; let max=0; for(let i=0;i<1000;i++){let s=createGame({seed:"'`fuzz-${n}-${i}`,playerCount:n}); let k=0; try { while(!s.over&&k<4000){s=s.pendingRefutation===null?playOpponentTurn(s):refuteAsOpponent(s); k++} } catch(e){failures.push(`${i}:throw:${e}`); continue} max=Math.max(max,k); const acc=s.events.filter(e=>e.type==="accusation-made"); if(!s.over||acc.length!==1||!acc[0].correct) failures.push(`${i}:over=${s.over}:steps=${k}:acc=${JSON.stringify(acc)}`)} console.log(n,{failures:failures.slice(0,5),count:failures.length,max}) }'"'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "~/.bun/bin/bun -e 'import {createGame} from \"./src/engine/setup.ts\"; import {playOpponentTurn,refuteAsOpponent} from \"./src/gm/opponent.ts\"; for (const n of [3,4,5,6]) { let failures=[]; let max=0; for(let i=0;i<1000;i++){let s=createGame({seed:"'`fuzz-${n}-${i}`,playerCount:n}); let k=0; try { while(!s.over&&k<4000){s=s.pendingRefutation===null?playOpponentTurn(s):refuteAsOpponent(s); k++} } catch(e){failures.push(`${i}:throw:${e}`); continue} max=Math.max(max,k); const acc=s.events.filter(e=>e.type==="accusation-made"); if(!s.over||acc.length!==1||!acc[0].correct) failures.push(`${i}:over=${s.over}:steps=${k}:acc=${JSON.stringify(acc)}`)} console.log(n,{failures:failures.slice(0,5),count:failures.length,max}) }'"'" in ../murder-mystery-test
 2026-08-23T04:03:18.864779Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
 2026-08-23T04:03:26.433453Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 97 column 5
 exec
-/bin/zsh -lc "/Users/jimcarter/.bun/bin/bun -e 'import {createGame} from \"./src/engine/setup.ts\"; import {playOpponentTurn,refuteAsOpponent} from \"./src/gm/opponent.ts\"; for (const n of [4,5,6]) { let failures=[]; let max=0; for(let i=0;i<200;i++){let s=createGame({seed:"'`fuzz-${n}-${i}`,playerCount:n}); let k=0; try { while(!s.over&&k<4000){s=s.pendingRefutation===null?playOpponentTurn(s):refuteAsOpponent(s); k++} } catch(e){failures.push(`${i}:throw:${e}`); continue} max=Math.max(max,k); const acc=s.events.filter(e=>e.type==="accusation-made"); if(!s.over||acc.length!==1||!acc[0].correct) failures.push(`${i}:over=${s.over}:steps=${k}:acc=${JSON.stringify(acc)}`)} console.log(n,{failures:failures.slice(0,5),count:failures.length,max}) }'"'" in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc "~/.bun/bin/bun -e 'import {createGame} from \"./src/engine/setup.ts\"; import {playOpponentTurn,refuteAsOpponent} from \"./src/gm/opponent.ts\"; for (const n of [4,5,6]) { let failures=[]; let max=0; for(let i=0;i<200;i++){let s=createGame({seed:"'`fuzz-${n}-${i}`,playerCount:n}); let k=0; try { while(!s.over&&k<4000){s=s.pendingRefutation===null?playOpponentTurn(s):refuteAsOpponent(s); k++} } catch(e){failures.push(`${i}:throw:${e}`); continue} max=Math.max(max,k); const acc=s.events.filter(e=>e.type==="accusation-made"); if(!s.over||acc.length!==1||!acc[0].correct) failures.push(`${i}:over=${s.over}:steps=${k}:acc=${JSON.stringify(acc)}`)} console.log(n,{failures:failures.slice(0,5),count:failures.length,max}) }'"'" in ../murder-mystery-test
  succeeded in 22623ms:
 4 {
   failures: [],
@@ -6997,7 +6997,7 @@ exec
 }
 
 exec
-/bin/zsh -lc 'NAHEL_ACTOR=agent:codex /Users/jimcarter/.bun/bin/bun /Users/jimcarter/projects/personal_projects/nahel/src/cli.ts brief' in /Users/jimcarter/projects/personal_projects/murder-mystery-test
+/bin/zsh -lc 'NAHEL_ACTOR=agent:codex ~/.bun/bin/bun ../nahel/src/cli.ts brief' in ../murder-mystery-test
  succeeded in 149ms:
 nahel brief
 
