@@ -501,3 +501,221 @@ describe('resolveChoice', () => {
     expect(resolveChoice('no', ambiguous)?.value).toBe('notes');
   });
 });
+
+/**
+ * The regression class these tests exist for.
+ *
+ * Defects 1 and 3 both shipped through a suite that was 369/0 green, because
+ * every assertion was about what the code COMPUTES and none was about how the
+ * played game READS. A player meets the transcript, so the transcript is the
+ * thing under test here: what gets said, how many times, and in whose words.
+ */
+describe('the transcript a player actually reads', () => {
+  /** A vendor that narrates every beat with a distinct, countable marker. */
+  function narratingVendor() {
+    let beat = 0;
+    return startFakeVendor((request) => {
+      const body = request.body as { messages: { content: string }[] };
+      const prompt = body.messages.map((message) => message.content).join('\n');
+      if (prompt.includes('Return exactly this JSON shape')) {
+        return completionResponse({
+          content: JSON.stringify({ victim: 'Lord Edgemere', setting: 'A rain-locked manor' }),
+          model: 'Test-Model',
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        });
+      }
+      const count = (prompt.match(/^\d+\. /gm) ?? []).length;
+      return completionResponse({
+        content: JSON.stringify(
+          Array.from({ length: count }, () => `FLAVOUR-${(beat += 1)} the gramophone plays on.`),
+        ),
+        model: 'Test-Model',
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      });
+    });
+  }
+
+  /** Every prompt the NARRATOR was sent, ignoring scenario and Q&A calls. */
+  function narrationPrompts(vendor: { requests: { body: unknown }[] }): string[] {
+    return vendor.requests
+      .map((request) => {
+        const body = request.body as { messages?: { content?: unknown }[] };
+        return (body.messages ?? []).map((message) => String(message.content ?? '')).join('\n');
+      })
+      .filter((prompt) => prompt.includes('You are the narrator'));
+  }
+
+  /**
+   * The engine sentences for deduction-bearing events. A player reasons FROM
+   * these, so they are the ones the engine must state — and, since the engine
+   * states them, the ones the model must never be handed to restate.
+   */
+  const CRITICAL_SENTENCE = [
+    / suggests .+ in the .+ with the /,
+    / refutes .+'s suggestion/,
+    /No one can refute /,
+    / shows you the /,
+    / accuses .+ in the .+ with the /,
+    / is out of the running/,
+    / wins: /,
+  ];
+
+  /**
+   * D1: a critical fact is stated ONCE, in the engine's words. Previously the
+   * engine's sentence and the model's retelling of the same fact were both
+   * printed (`fix(ui): always print the engine's line for a critical event`,
+   * c205884), which read as a stutter. The guarantee is kept by never asking
+   * the model for those events at all — a stronger rule than printing both,
+   * because it cannot depend on the two strings happening to differ.
+   */
+  test('the narrator is never asked to retell a deduction-bearing fact', async () => {
+    const vendor = narratingVendor();
+    try {
+      const session = drivenSession(plainPlayer());
+      const client = clientFor(vendor.baseUrl);
+      const code = await runGame(
+        { seed: 2, players: 3, useLlm: true },
+        { io: session.io, createClient: () => client },
+      );
+      expect(code).toBe(0);
+
+      const prompts = narrationPrompts(vendor);
+      console.log('[narration prompts] count ->', prompts.length);
+      expect(prompts.length).toBeGreaterThan(3);
+
+      for (const prompt of prompts) {
+        const listed = prompt.split('\n').filter((line) => /^\d+\. /.test(line));
+        for (const line of listed) {
+          for (const pattern of CRITICAL_SENTENCE) {
+            if (pattern.test(line)) {
+              console.log('[leaked into the narrator prompt]', line);
+            }
+            expect(line).not.toMatch(pattern);
+          }
+        }
+      }
+    } finally {
+      await vendor.stop();
+    }
+  }, 60_000);
+
+  /**
+   * The stutter itself, stated as the property a reader would state: a
+   * suggested triple is a single fact, and the transcript says it once. Before
+   * the fix the engine's sentence and the model's retelling of it were printed
+   * back to back, so every suggestion appeared twice on consecutive lines.
+   */
+  test('a suggested triple appears on exactly one line', async () => {
+    const vendor = narratingVendor();
+    try {
+      const session = drivenSession(plainPlayer());
+      const client = clientFor(vendor.baseUrl);
+      await runGame(
+        { seed: 2, players: 3, useLlm: true },
+        { io: session.io, createClient: () => client },
+      );
+      const lines = session.lines;
+
+      // A later accusation or the closing answer names the same triple, and
+      // legitimately so — those are different events. The stutter was the SAME
+      // event said twice running, so neighbouring lines are what to look at.
+      let suggestions = 0;
+      lines.forEach((line, index) => {
+        const match = / suggests (.+) in the (.+) with the (.+)\./.exec(line);
+        if (match === null) return;
+        suggestions += 1;
+        const triple = [match[1] as string, match[2] as string, match[3] as string];
+        for (const neighbour of [lines[index - 1], lines[index + 1]]) {
+          if (neighbour === undefined) continue;
+          if (triple.every((part) => neighbour.includes(part))) {
+            console.log('[stutter] ->', [line, neighbour]);
+          }
+          expect(triple.every((part) => neighbour.includes(part))).toBe(false);
+        }
+      });
+      console.log('[suggestions found] ->', suggestions);
+      expect(suggestions).toBeGreaterThan(0);
+    } finally {
+      await vendor.stop();
+    }
+  }, 60_000);
+
+  /**
+   * D1's consequence: a critical event coming back in the engine's voice is
+   * DELIBERATE, not a vendor failure. If the two are conflated, every healthy
+   * game prints "the game master is not answering" the first time anyone
+   * suggests anything.
+   */
+  test('engine-voiced critical events do not raise the offline notice', async () => {
+    const vendor = narratingVendor();
+    try {
+      const session = drivenSession(plainPlayer());
+      const client = clientFor(vendor.baseUrl);
+      await runGame(
+        { seed: 2, players: 3, useLlm: true },
+        { io: session.io, createClient: () => client },
+      );
+      const text = session.text();
+      expect(text).toMatch(/ suggests .+ in the .+ with the /);
+      expect(text).not.toContain('the game master is not answering');
+    } finally {
+      await vendor.stop();
+    }
+  }, 60_000);
+
+  /**
+   * D2: `--help` promises `quit` is always available. At the forced-refutation
+   * prompt it was refused as an unknown word, because that menu was built from
+   * the card options alone and carried none of the command vocabulary.
+   */
+  test('quit is honoured while the player owes a refutation', async () => {
+    let sawRefutationPrompt = false;
+    const plain = plainPlayer();
+    const driver: Driver = (lines, prompt) => {
+      if (lastTitle(lines).includes('you must show ONE of these')) {
+        sawRefutationPrompt = true;
+        return 'quit';
+      }
+      return plain(lines, prompt);
+    };
+
+    const session = drivenSession(driver);
+    const code = await runGame({ seed: 7, players: 3, useLlm: false }, { io: session.io });
+    const text = session.text();
+
+    console.log('[refutation prompt reached] ->', sawRefutationPrompt);
+    expect(sawRefutationPrompt).toBe(true);
+    expect(text).not.toContain('I do not understand "quit"');
+    expect(text).toContain('You leave the house with the case unsolved.');
+    expect(code).toBe(0);
+  }, 60_000);
+
+  /**
+   * D4: the meaningful destinations are rooms and secret passages; corridor
+   * squares are how you get to one. A menu that buries the Library at option
+   * 11 makes the player read every line to find the only one that matters.
+   */
+  test('rooms are listed before corridor squares in the move menu', async () => {
+    let checked = false;
+    const plain = plainPlayer();
+    const driver: Driver = (lines, prompt) => {
+      const menu = lastMenu(lines);
+      const moves = menu.filter((line) => line.includes('move to '));
+      const rooms = moves.filter((line) => line.includes('move to the '));
+      if (moves.length > 1 && rooms.length > 0) {
+        const lastRoom = moves.lastIndexOf(rooms[rooms.length - 1] as string);
+        const firstCorridor = moves.findIndex((line) => line.includes('move to corridor '));
+        if (firstCorridor >= 0) {
+          console.log('[move menu] last room at', lastRoom, 'first corridor at', firstCorridor);
+          expect(lastRoom).toBeLessThan(firstCorridor);
+          checked = true;
+        }
+      }
+      return plain(lines, prompt);
+    };
+
+    const session = drivenSession(driver);
+    await runGame({ seed: 3, players: 4, useLlm: false }, { io: session.io });
+    expect(checked).toBe(true);
+  }, 60_000);
+});

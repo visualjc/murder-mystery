@@ -10,13 +10,19 @@ import { describe, expect, test } from 'bun:test';
 
 import { makeSuggestion, rollDice } from '../../src/engine/actions.ts';
 import { createGame } from '../../src/engine/setup.ts';
-import { describeEvent, visibleEvents } from '../../src/engine/view.ts';
+import { describeEvent, playerView, visibleEvents } from '../../src/engine/view.ts';
 import type { GameEvent, GameState } from '../../src/engine/types.ts';
 import { CANNED_SCENARIO } from '../../src/gm/scenario.ts';
-import { CRITICAL_EVENTS, narrateEvents } from '../../src/gm/narrator.ts';
+import { CRITICAL_EVENTS, narrateEvents, narrationMessages } from '../../src/gm/narrator.ts';
+import { GameMaster } from '../../src/gm/index.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
 import { arrangedGame, standingInRoom } from '../engine/helpers.ts';
 import { clientFor, promptTextOf } from './support.ts';
+
+/** The events of a turn that the model is actually asked to narrate. */
+function sceneryOf(events: readonly GameEvent[]): GameEvent[] {
+  return events.filter((event) => !CRITICAL_EVENTS.has(event.type));
+}
 
 /** A real turn's worth of real events, seen by p1. */
 function turnEvents(): GameEvent[] {
@@ -42,32 +48,70 @@ function refutationBetweenOthers(): GameState {
 }
 
 describe('narration', () => {
-  test('one call per turn covers the whole batch of events', async () => {
+  test('one call per turn covers the scenery, and the engine keeps the rest', async () => {
     const events = turnEvents();
+    const scenery = sceneryOf(events);
+    // The fixture must exercise BOTH halves of the split, or it proves nothing.
+    expect(scenery.length).toBeGreaterThan(0);
+    expect(scenery.length).toBeLessThan(events.length);
+
     const vendor = startFakeVendor(() =>
       completionResponse({
-        content: JSON.stringify(events.map((_event, index) => `Line ${index} in a velvet voice.`)),
+        content: JSON.stringify(scenery.map((_event, index) => `Line ${index} in a velvet voice.`)),
         usage: { prompt_tokens: 80, completion_tokens: 60, total_tokens: 140 },
       }),
     );
     try {
       const client = clientFor(vendor.baseUrl);
       const lines = await narrateEvents(client, { scenario: CANNED_SCENARIO, viewer: 'p1', events });
-      console.log('[narration] lines ->', lines.map((line) => line.text));
+      console.log('[narration] lines ->', lines.map((line) => [line.source, line.text]));
 
       expect(vendor.requests).toHaveLength(1);
+      // Every event still gets exactly one line, in the order it happened.
       expect(lines).toHaveLength(events.length);
-      lines.forEach((line, index) => {
-        expect(line.source).toBe('llm');
-        expect(line.text).toBe(`Line ${index} in a velvet voice.`);
-        expect(line.event).toBe(events[index]!);
-      });
+      expect(lines.map((line) => line.event)).toEqual([...events]);
 
-      // The prompt carries the engine's own account of each event, so the model
-      // is describing facts rather than inventing them.
+      let sceneryIndex = 0;
+      for (const line of lines) {
+        if (CRITICAL_EVENTS.has(line.event.type)) {
+          // Deduction-bearing: the engine's words, marked as a deliberate
+          // choice rather than a vendor failure.
+          expect(line.source).toBe('engine');
+          expect(line.text).toBe(describeEvent(line.event));
+        } else {
+          expect(line.source).toBe('llm');
+          expect(line.text).toBe(`Line ${sceneryIndex} in a velvet voice.`);
+          sceneryIndex += 1;
+        }
+      }
+
+      // The prompt carries the engine's account of each SCENERY event, and no
+      // account whatsoever of the critical ones.
       const prompt = promptTextOf(vendor.requests[0]!);
-      for (const event of events) expect(prompt).toContain(describeEvent(event));
+      for (const event of scenery) expect(prompt).toContain(describeEvent(event));
+      for (const event of events) {
+        if (CRITICAL_EVENTS.has(event.type)) expect(prompt).not.toContain(describeEvent(event));
+      }
       expect(client.usage.total_tokens).toBe(140);
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('a turn of nothing but critical events costs no call at all', async () => {
+    const events = turnEvents().filter((event) => CRITICAL_EVENTS.has(event.type));
+    expect(events.length).toBeGreaterThan(0);
+
+    const vendor = startFakeVendor(() => completionResponse({ content: '[]' }));
+    try {
+      const client = clientFor(vendor.baseUrl);
+      const lines = await narrateEvents(client, { scenario: CANNED_SCENARIO, viewer: 'p1', events });
+      console.log('[narration all-critical] ->', lines.map((line) => [line.source, line.text]));
+
+      expect(vendor.requests).toHaveLength(0);
+      expect(client.usage.calls).toBe(0);
+      expect(lines.map((line) => line.text)).toEqual(events.map(describeEvent));
+      expect(lines.every((line) => line.source === 'engine')).toBe(true);
     } finally {
       await vendor.stop();
     }
@@ -82,12 +126,16 @@ describe('narration', () => {
         viewer: 'p1',
         events,
       });
-      console.log('[narration failed] ->', lines.map((line) => line.text));
+      console.log('[narration failed] ->', lines.map((line) => [line.source, line.text]));
 
       expect(lines).toHaveLength(events.length);
       lines.forEach((line, index) => {
-        expect(line.source).toBe('fallback');
-        expect(line.text).toBe(describeEvent(events[index]!));
+        const event = events[index]!;
+        expect(line.text).toBe(describeEvent(event));
+        // Only the SCENERY failed. A critical event was never the vendor's to
+        // deliver, so calling it a fallback would report an outage that did
+        // not happen — and the UI raises its offline notice off exactly this.
+        expect(line.source).toBe(CRITICAL_EVENTS.has(event.type) ? 'engine' : 'fallback');
       });
     } finally {
       await vendor.stop();
@@ -105,7 +153,11 @@ describe('narration', () => {
         viewer: 'p1',
         events,
       });
-      expect(lines.every((line) => line.source === 'fallback')).toBe(true);
+      expect(
+        lines.every((line) =>
+          line.source === (CRITICAL_EVENTS.has(line.event.type) ? 'engine' : 'fallback'),
+        ),
+      ).toBe(true);
       expect(lines.map((line) => line.text)).toEqual(events.map(describeEvent));
     } finally {
       await vendor.stop();
@@ -114,6 +166,9 @@ describe('narration', () => {
 
   test('a short or ragged array falls back only for the entries it missed', async () => {
     const events = turnEvents();
+    const scenery = sceneryOf(events);
+    expect(scenery.length).toBeGreaterThan(1);
+
     const vendor = startFakeVendor(() =>
       completionResponse({ content: JSON.stringify(['A hush falls.', '', 17]) }),
     );
@@ -125,13 +180,19 @@ describe('narration', () => {
       });
       console.log('[narration ragged] ->', lines.map((line) => [line.source, line.text]));
 
-      expect(lines[0]!.text).toBe('A hush falls.');
-      expect(lines[0]!.source).toBe('llm');
+      // The slots line up with the SCENERY, in scenery order — the model was
+      // never told about anything else, so it cannot be short by those.
+      const narrated = lines.filter((line) => !CRITICAL_EVENTS.has(line.event.type));
+      expect(narrated).toHaveLength(scenery.length);
+      expect(narrated[0]!.text).toBe('A hush falls.');
+      expect(narrated[0]!.source).toBe('llm');
       // An empty string and a number are not narration.
-      expect(lines[1]!.text).toBe(describeEvent(events[1]!));
-      expect(lines[2]!.text).toBe(describeEvent(events[2]!));
-      for (let index = 3; index < events.length; index += 1) {
-        expect(lines[index]!.source).toBe('fallback');
+      for (let index = 1; index < narrated.length; index += 1) {
+        expect(narrated[index]!.source).toBe('fallback');
+        expect(narrated[index]!.text).toBe(describeEvent(narrated[index]!.event));
+      }
+      for (const line of lines.filter((entry) => CRITICAL_EVENTS.has(entry.event.type))) {
+        expect(line.source).toBe('engine');
       }
     } finally {
       await vendor.stop();
@@ -173,21 +234,56 @@ describe('the narrator filters for its viewer', () => {
       completionResponse({ content: JSON.stringify(['A card changes hands in silence.']) }),
     );
     try {
+      // A turn with scenery in it, so a request really is made and the prompt
+      // is a thing that exists to inspect. Both refutation events are critical
+      // and would never be sent on their own — the filter is what must hold
+      // when the careless caller ALSO hands over something narratable.
+      const scenery = sceneryOf(turnEvents())[0]!;
+      expect(CRITICAL_EVENTS.has(scenery.type)).toBe(false);
+
       // The careless caller: the tail of the RAW log, unfiltered, for p1.
       const lines = await narrateEvents(clientFor(vendor.baseUrl), {
         scenario: CANNED_SCENARIO,
         viewer: 'p1',
-        events: [refuted, shown],
+        events: [scenery, refuted, shown],
       });
       const prompt = promptTextOf(vendor.requests[0]!);
       console.log('[narration viewer-filtered] prompt ->', prompt);
 
       expect(prompt).not.toContain('Reverend Green');
-      // What p1 may see still narrates — the filter drops, it does not mute.
-      expect(prompt).toContain(describeEvent(refuted));
+      // p1 may see the refutation happened, and it is told — in the engine's
+      // own words, because it is deduction input the model never gets to phrase.
+      expect(prompt).not.toContain(describeEvent(refuted));
+      expect(lines).toHaveLength(2);
+      expect(lines[0]!.event).toBe(scenery);
+      expect(lines[0]!.text).toBe('A card changes hands in silence.');
+      expect(lines[1]!.event).toBe(refuted);
+      expect(lines[1]!.source).toBe('engine');
+      expect(lines[1]!.text).toBe(describeEvent(refuted));
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('an all-critical slice of the raw log makes no request whatsoever', async () => {
+    const state = refutationBetweenOthers();
+    const refuted = state.events.find((event) => event.type === 'suggestion-refuted')!;
+    const shown = state.events.find((event) => event.type === 'refutation-card-shown')!;
+
+    const vendor = startFakeVendor(() => completionResponse({ content: '[]' }));
+    try {
+      const lines = await narrateEvents(clientFor(vendor.baseUrl), {
+        scenario: CANNED_SCENARIO,
+        viewer: 'p1',
+        events: [refuted, shown],
+      });
+      // p1 may not see `shown` at all, and `refuted` is the engine's to state:
+      // nothing is left that a vendor could be asked about.
+      console.log('[all-critical slice] requests ->', vendor.requests.length);
+      expect(vendor.requests).toHaveLength(0);
       expect(lines).toHaveLength(1);
       expect(lines[0]!.event).toBe(refuted);
-      expect(lines[0]!.text).toBe('A card changes hands in silence.');
+      expect(lines[0]!.source).toBe('engine');
     } finally {
       await vendor.stop();
     }
@@ -239,6 +335,55 @@ describe('the narrator filters for its viewer', () => {
  * come back: an event quietly dropped from this list becomes an event the
  * player only ever hears about from the model.
  */
+/**
+ * The narrator was writing "Player two moved from position sixteen-seven",
+ * because that is `describeEvent`'s vocabulary read aloud: seat ids and grid
+ * coordinates are the ENGINE's bookkeeping, and the prompt gave the model
+ * nothing else to call people or places. Seating is public — it is already on
+ * the player's own screen — so telling the model who is who leaks nothing.
+ */
+describe('the narration prompt speaks the fiction, not the engine', () => {
+  const ROSTER = [
+    { id: 'p1' as const, character: 'Miss Scarlett' },
+    { id: 'p2' as const, character: 'Colonel Mustard' },
+  ];
+
+  test('the roster is in the prompt, and seat ids and coordinates are forbidden', () => {
+    const scenery = sceneryOf(turnEvents());
+    const messages = narrationMessages(CANNED_SCENARIO, scenery, ROSTER);
+    const prompt = messages.map((message) => message.content).join('\n');
+    console.log('[narration prompt] ->', prompt);
+
+    expect(prompt).toContain('p1 is Miss Scarlett');
+    expect(prompt).toContain('p2 is Colonel Mustard');
+    expect(prompt).toContain('Call people by their character name');
+    expect(prompt).toMatch(/Never write a seat id/);
+    expect(prompt).toMatch(/Never read out corridor coordinates/);
+    expect(prompt).toContain('past tense');
+  });
+
+  test('the game master builds the roster from the view it was given', async () => {
+    const state = createGame({ seed: 'roster', playerCount: 3 });
+    const view = playerView(rollDice(state), 'p1');
+    const vendor = startFakeVendor(() =>
+      completionResponse({ content: JSON.stringify(['The hall was still.']) }),
+    );
+    try {
+      const gm = new GameMaster(clientFor(vendor.baseUrl));
+      await gm.narrate(view, sceneryOf(visibleEvents(rollDice(state), 'p1')).slice(0, 1));
+      const prompt = promptTextOf(vendor.requests[0]!);
+      console.log('[roster from view] ->', prompt.split('At the table:')[1]?.split('What just')[0]);
+
+      expect(prompt).toContain(`${view.you} is ${view.character}`);
+      for (const opponent of view.opponents) {
+        expect(prompt).toContain(`${opponent.id} is ${opponent.character}`);
+      }
+    } finally {
+      await vendor.stop();
+    }
+  });
+});
+
 describe('CRITICAL_EVENTS', () => {
   test('names every moment a player deduces from, and nothing that is only scenery', () => {
     console.log('[critical events] ->', [...CRITICAL_EVENTS].sort());

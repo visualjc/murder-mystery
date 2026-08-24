@@ -25,7 +25,16 @@ import { tidyText, unfence } from './text.ts';
 export type NarrationLine = {
   readonly event: GameEvent;
   readonly text: string;
-  readonly source: 'llm' | 'fallback';
+  /**
+   * Where the words came from.
+   *
+   * `engine` and `fallback` are both the engine's own sentence, and the
+   * difference between them matters to the caller: `engine` is the deliberate
+   * voice for a critical event in a perfectly healthy game, while `fallback`
+   * means the model was asked and did not deliver. Conflating them makes every
+   * suggestion look like a vendor outage.
+   */
+  readonly source: 'llm' | 'engine' | 'fallback';
 };
 
 const MAX_LINE_LENGTH = 400;
@@ -42,9 +51,14 @@ const MAX_LINE_LENGTH = 400;
  * how it ended.
  *
  * Everything else — rolls, moves, secret passages, tokens sliding across the
- * board — is scenery, and the model's voice replaces the engine's freely. On a
- * critical event the model still speaks; it simply speaks ALONGSIDE the engine
- * rather than instead of it.
+ * board — is scenery, and the model's voice replaces the engine's freely.
+ *
+ * A critical event is not narrated AT ALL: it is never put in the prompt, and
+ * the engine's sentence is the only line the player gets for it. Printing both
+ * the engine's sentence and the model's retelling — the first shape of this
+ * guarantee — said every deduction-bearing fact twice in a row, and leaned on
+ * the two strings happening to differ. Withholding the event is the stronger
+ * rule and the shorter transcript, and it makes the prompt cheaper besides.
  */
 export const CRITICAL_EVENTS: ReadonlySet<GameEvent['type']> = new Set([
   // The suggested TRIPLE is deduction input: a narration that renames the
@@ -64,9 +78,21 @@ export function fallbackNarration(events: readonly GameEvent[]): NarrationLine[]
   return events.map((event) => ({ event, text: describeEvent(event), source: 'fallback' as const }));
 }
 
+/**
+ * Who sits in which seat — public information, already on the player's screen
+ * in `renderStatus`, so putting it in the prompt gives the model nothing it
+ * could leak.
+ *
+ * Without it the model reads the engine's internal vocabulary aloud: seat ids
+ * become "Player two" and a corridor's grid coordinates become "position
+ * sixteen-seven". Those are the engine's bookkeeping, not the fiction.
+ */
+export type Roster = readonly { readonly id: PlayerId; readonly character: string }[];
+
 export function narrationMessages(
   scenario: Scenario,
   events: readonly GameEvent[],
+  roster: Roster = [],
 ): ChatMessage[] {
   return [
     {
@@ -76,6 +102,9 @@ export function narrationMessages(
         'Rules you may not break:',
         '- Never add an event, a clue, or a deduction that is not in the list you are given.',
         '- Never say who the murderer is, or what the murder weapon or room was. You do not know.',
+        '- Call people by their character name. Never write a seat id (p1, p2) or "Player one".',
+        '- Never read out corridor coordinates. A corridor is "the corridor", "the passage", "the hall" — never "sixteen-seven".',
+        '- Write in the past tense throughout.',
         '- One sentence per numbered line, in the same order.',
         `Reply with a JSON array of ${events.length} strings and nothing else.`,
       ].join('\n'),
@@ -85,6 +114,9 @@ export function narrationMessages(
       content: [
         `Setting: ${scenario.setting}`,
         `The victim: ${scenario.victim}`,
+        ...(roster.length === 0
+          ? []
+          : ['', 'At the table:', ...roster.map((seat) => `- ${seat.id} is ${seat.character}`)]),
         '',
         'What just happened, in order:',
         ...events.map((event, index) => `${index + 1}. ${describeEvent(event)}`),
@@ -124,6 +156,8 @@ export type NarrationRequest = {
   readonly events: readonly GameEvent[];
   /** Model for this call only; defaults to the client's configured model. */
   readonly model?: string;
+  /** Seat-to-character names, so the prose uses the fiction's vocabulary. */
+  readonly roster?: Roster;
 };
 
 /**
@@ -138,15 +172,41 @@ export async function narrateEvents(
   const events = request.events.filter((event) => isVisibleTo(event, request.viewer));
   if (events.length === 0) return [];
 
-  const reply = await client.tryChat(narrationMessages(request.scenario, events), {
-    ...(request.model === undefined ? {} : { model: request.model }),
-    params: { temperature: 0.8 },
+  // Critical events are answered here and never reach the vendor. Only the
+  // scenery is narrated, so the prompt is smaller and no deduction-bearing
+  // sentence is ever handed to a model to rephrase.
+  const scenery = events.filter((event) => !CRITICAL_EVENTS.has(event.type));
+  const engineVoiced = (event: GameEvent): NarrationLine => ({
+    event,
+    text: describeEvent(event),
+    source: 'engine' as const,
   });
-  if (!reply.ok) return fallbackNarration(events);
+  if (scenery.length === 0) return events.map(engineVoiced);
 
-  const slots = parseNarration(reply.value.text, events.length);
-  return events.map((event, index) => {
-    const line = slots[index];
+  const reply = await client.tryChat(
+    narrationMessages(request.scenario, scenery, request.roster ?? []),
+    {
+      ...(request.model === undefined ? {} : { model: request.model }),
+      params: { temperature: 0.8 },
+    },
+  );
+  if (!reply.ok) {
+    // The vendor failed. Scenery falls back; the critical events were never
+    // its business, so they stay `engine` and the caller's outage notice is
+    // still driven by a genuine failure alone.
+    return events.map((event) =>
+      CRITICAL_EVENTS.has(event.type)
+        ? engineVoiced(event)
+        : { event, text: describeEvent(event), source: 'fallback' as const },
+    );
+  }
+
+  const slots = parseNarration(reply.value.text, scenery.length);
+  let sceneryIndex = 0;
+  return events.map((event) => {
+    if (CRITICAL_EVENTS.has(event.type)) return engineVoiced(event);
+    const line = slots[sceneryIndex];
+    sceneryIndex += 1;
     return line === null || line === undefined
       ? { event, text: describeEvent(event), source: 'fallback' as const }
       : { event, text: line, source: 'llm' as const };

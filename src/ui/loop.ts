@@ -38,10 +38,9 @@ import {
 } from '../engine/actions.ts';
 import { createGame } from '../engine/setup.ts';
 import { IllegalActionError, type GameState } from '../engine/types.ts';
-import { describeEvent, isVisibleTo, playerView, type PlayerView } from '../engine/view.ts';
+import { isVisibleTo, playerView, type PlayerView } from '../engine/view.ts';
 import {
   CANNED_SCENARIO,
-  CRITICAL_EVENTS,
   GameMaster,
   buildNotebook,
   fallbackNarration,
@@ -247,18 +246,11 @@ export async function runGame(options: LoopOptions, deps: LoopDeps): Promise<num
       llmNoticed = true;
       io.write(FALLBACK_NOTICE);
     }
-    for (const line of lines) {
-      // The engine's own sentence for a critical event is a trusted channel and
-      // always reaches the player (ADR-0001): a narrator that left a refutation
-      // out, or described one that did not happen, would otherwise be the only
-      // account the player had of a fact they must deduce from. The model still
-      // gets its line — it colours the moment, it does not replace it.
-      const authoritative = describeEvent(line.event);
-      if (line.source === 'llm' && CRITICAL_EVENTS.has(line.event.type) && line.text !== authoritative) {
-        io.write(`  ${authoritative}`);
-      }
-      io.write(`  ${line.text}`);
-    }
+    // Each event gets exactly one line. A critical event's line is the
+    // engine's own sentence, guaranteed upstream by the narrator never being
+    // asked about it (gm/narrator.ts, CRITICAL_EVENTS) — so the trusted
+    // channel is intact without the player reading the same fact twice.
+    for (const line of lines) io.write(`  ${line.text}`);
   }
 
   function cardOptions<T extends Card>(cards: readonly T[]): Option<T | null>[] {
@@ -328,7 +320,14 @@ export async function runGame(options: LoopOptions, deps: LoopDeps): Promise<num
     if (view.eliminated) {
       choices.push(option('end', 'end your turn', { kind: 'end' } as const));
     } else if (state.phase === 'awaiting-move') {
-      const moves = legalMoves(state);
+      // Rooms first. A room is the only square you can do anything FROM, so
+      // burying the one reachable room under nine corridor steps makes the
+      // player read the whole menu to find the only line that matters.
+      // Corridors keep their own order — position decides next turn's reach.
+      const moves = [...legalMoves(state)].sort((left, right) => {
+        const rank = (kind: string): number => (kind === 'room' ? 0 : 1);
+        return rank(left.position.kind) - rank(right.position.kind);
+      });
       for (const move of moves) {
         choices.push(option('', `move to ${describeDestination(move)}`, {
           kind: 'move',
@@ -427,11 +426,21 @@ export async function runGame(options: LoopOptions, deps: LoopDeps): Promise<num
     const pending = view.pendingRefutation;
     if (pending === null || !pending.yours || pending.options === null) return;
 
-    const card = await choose(
+    // Refutation is mandatory: there is no "never mind" here, because the rules
+    // do not let a player decline. Leaving the table is a different act, and
+    // `--help` promises `quit` works everywhere — so it, alone of the command
+    // vocabulary, is matchable at this prompt. Rolling or suggesting mid-
+    // refutation would be nonsense and stays unlisted and unmatched.
+    const card = await choose<Card | 'quit'>(
       `${pending.suggester} is waiting — you must show ONE of these, privately:`,
-      pending.options.map((candidate) => option('', String(candidate), candidate)),
+      pending.options.map((candidate) => option<Card | 'quit'>('', String(candidate), candidate)),
+      [option<Card | 'quit'>('quit', 'leave the game', 'quit')],
     );
     if (card === null) return;
+    if (card === 'quit') {
+      ended = true;
+      return;
+    }
     try {
       state = provideRefutationCard(state, card);
     } catch (error) {

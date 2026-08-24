@@ -1,0 +1,2 @@
+{"id":"tk17n33d","ts":"2026-08-24T23:08:16Z","seq":0,"type":"item.updated","actor":{"kind":"agent","id":"claude-code"},"item":"hz7b0606","payload":{"target":"item","record":{"id":"hz7b0606","name":"narration-stutter","type":"bug","status":"in-review","lane":"direct","depends_on":[],"external_refs":[],"created":"2026-08-24T22:56:56Z","updated":"2026-08-24T23:08:16Z"},"body":""}}
+{"id":"vyvwqe12","ts":"2026-08-24T23:08:16Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

@@ -1,0 +1,2 @@
+{"id":"9qrbk4y7","ts":"2026-08-24T22:56:56Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"claude-code"},"item":"j8jhvt25","payload":{"target":"item","record":{"id":"j8jhvt25","name":"move-menu-noise","type":"chore","status":"backlog","lane":"direct","depends_on":[],"external_refs":[],"created":"2026-08-24T22:56:56Z","updated":"2026-08-24T22:56:56Z"},"body":""}}
+{"id":"5q6n16vz","ts":"2026-08-24T22:56:56Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

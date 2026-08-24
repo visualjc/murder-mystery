@@ -36,6 +36,7 @@ export {
   parseNarration,
   type NarrationLine,
   type NarrationRequest,
+  type Roster,
 } from './narrator.ts';
 export {
   askSuspect,
@@ -174,6 +175,12 @@ export class GameMaster {
           scenario: this.#scenario ?? CANNED_SCENARIO,
           viewer: view.you,
           events,
+          // Public seating, straight off the player's own screen: the model
+          // needs it to write "Colonel Mustard" where the engine writes "p2".
+          roster: [
+            { id: view.you, character: view.character },
+            ...view.opponents.map((seat) => ({ id: seat.id, character: seat.character })),
+          ],
           ...(this.models.narration === undefined ? {} : { model: this.models.narration }),
         }),
     );

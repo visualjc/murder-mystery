@@ -229,10 +229,19 @@ describe('narration is scoped to the player it is for', () => {
       const prompt = promptTextOf(vendor.requests[0]!);
       console.log('[gm narrate viewer] ->', prompt);
 
+      // Neither reaches the vendor, for two independent reasons: `shown` is
+      // not p1's to see at all, and `refuted` is deduction input the engine
+      // states itself. The moved suspect and weapon are scenery and do go.
       expect(prompt).not.toContain(describeEvent(shown));
-      expect(prompt).toContain(describeEvent(refuted));
+      expect(prompt).not.toContain(describeEvent(refuted));
+      expect(prompt).toMatch(/is moved to the Kitchen/);
+
+      // p1 still HEARS about the refutation — in the engine's own words.
       expect(lines.some((line) => line.event === shown)).toBe(false);
-      expect(lines.some((line) => line.event === refuted)).toBe(true);
+      const refutedLine = lines.find((line) => line.event === refuted);
+      expect(refutedLine).toBeDefined();
+      expect(refutedLine!.source).toBe('engine');
+      expect(refutedLine!.text).toBe(describeEvent(refuted));
     } finally {
       await vendor.stop();
     }
