@@ -16,7 +16,7 @@ import { CANNED_SCENARIO } from '../../src/gm/scenario.ts';
 import { GameMaster, formatUsageLedger } from '../../src/gm/index.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
 import { arrangedGame, standingInRoom } from '../engine/helpers.ts';
-import { clientFor, promptTextOf } from './support.ts';
+import { clientFor, narrationReply, promptTextOf } from './support.ts';
 
 const MODELS = { scenario: 'Scenario-Model', narration: 'Narration-Model', qa: 'Qa-Model' };
 
@@ -38,7 +38,7 @@ function roleVendor() {
     }
     if (model === MODELS.narration) {
       return completionResponse({
-        content: JSON.stringify(['A door closes somewhere upstairs.']),
+        content: narrationReply('A door closes somewhere upstairs.'),
         model,
         usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
       });
@@ -174,7 +174,7 @@ describe('the circuit breaker', () => {
     const vendor = startFakeVendor(() =>
       failing
         ? errorResponse(500, 'a blip')
-        : completionResponse({ content: JSON.stringify(['A door closes somewhere upstairs.']) }),
+        : completionResponse({ content: narrationReply('A door closes somewhere upstairs.') }),
     );
     try {
       const notices: string[] = [];
@@ -220,7 +220,7 @@ describe('narration is scoped to the player it is for', () => {
     const refuted = state.events.find((event) => event.type === 'suggestion-refuted')!;
 
     const vendor = startFakeVendor(() =>
-      completionResponse({ content: JSON.stringify(['Something passes between them.']) }),
+      completionResponse({ content: narrationReply('Something passes between them.') }),
     );
     try {
       const master = new GameMaster(clientFor(vendor.baseUrl));
@@ -361,7 +361,7 @@ describe('formatUsageLedger', () => {
       index === 0
         ? errorResponse(429, 'slow down')
         : completionResponse({
-            content: JSON.stringify(['A door closes somewhere upstairs.']),
+            content: narrationReply('A door closes somewhere upstairs.'),
             model: MODELS.narration,
             usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
           }),

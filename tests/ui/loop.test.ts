@@ -11,7 +11,7 @@ import { describe, expect, test } from 'bun:test';
 import { HUMAN_SEAT, resolveChoice, runGame } from '../../src/ui/loop.ts';
 import { drivenSession, lastMenu, lastTitle, plainPlayer, scriptedDriver, type Driver } from './support.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
-import { clientFor } from '../gm/support.ts';
+import { clientFor, narrationReply } from '../gm/support.ts';
 import { ROOMS, SUSPECTS, WEAPONS } from '../../src/engine/cards.ts';
 
 const OFFLINE = { seed: 1, players: 3, useLlm: false } as const;
@@ -230,7 +230,7 @@ describe('with a game master', () => {
       // Narration: one string per numbered line requested.
       const count = (prompt.match(/^\d+\. /gm) ?? []).length;
       return completionResponse({
-        content: JSON.stringify(Array.from({ length: count }, (_u, index) => `Narrated line ${index + 1}.`)),
+        content: narrationReply(...Array.from({ length: count }, (_u, index) => `Narrated line ${index + 1}.`)),
         model: 'Test-Model',
         usage: { prompt_tokens: 30, completion_tokens: 10, total_tokens: 40 },
       });
@@ -344,8 +344,8 @@ describe('with a game master', () => {
 
       const count = (prompt.match(/^\d+\. /gm) ?? []).length;
       return completionResponse({
-        content: JSON.stringify(
-          Array.from({ length: count }, () => `${CSI_C1}2K${ESC}[31mA door closes upstairs.${ESC}[0m`),
+        content: narrationReply(
+          ...Array.from({ length: count }, () => `${CSI_C1}2K${ESC}[31mA door closes upstairs.${ESC}[0m`),
         ),
         model: 'Test-Model',
         usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
@@ -413,7 +413,7 @@ describe('with a game master', () => {
       }
       const count = (prompt.match(/^\d+\. /gm) ?? []).length;
       return completionResponse({
-        content: JSON.stringify(Array.from({ length: count }, () => FLAVOUR)),
+        content: narrationReply(...Array.from({ length: count }, () => FLAVOUR)),
         model: 'Test-Model',
         usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
       });
@@ -526,8 +526,8 @@ describe('the transcript a player actually reads', () => {
       }
       const count = (prompt.match(/^\d+\. /gm) ?? []).length;
       return completionResponse({
-        content: JSON.stringify(
-          Array.from({ length: count }, () => `FLAVOUR-${(beat += 1)} the gramophone plays on.`),
+        content: narrationReply(
+          ...Array.from({ length: count }, () => `FLAVOUR-${(beat += 1)} the gramophone plays on.`),
         ),
         model: 'Test-Model',
         usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },

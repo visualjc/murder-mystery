@@ -194,8 +194,13 @@ describe('a whole game played through the game master', () => {
         }
         const count = (prompt.match(/^\d+\. /gm) ?? []).length;
         return serve(
+          // Labelled by line number, the shape the narrator asks for
+          // (src/gm/narrator.ts, parseNarration).
           JSON.stringify(
-            Array.from({ length: count }, (_unused, index) => `${NARRATION_MARK} beat ${index + 1}.`),
+            Array.from({ length: count }, (_unused, index) => ({
+              n: index + 1,
+              text: `${NARRATION_MARK} beat ${index + 1}.`,
+            })),
           ),
         );
       }

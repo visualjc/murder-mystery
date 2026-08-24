@@ -1,0 +1,2 @@
+{"id":"fn0r75sm","ts":"2026-08-24T23:16:34Z","seq":0,"type":"item.updated","actor":{"kind":"agent","id":"claude-code"},"item":"nrntyese","payload":{"target":"item","record":{"id":"nrntyese","name":"narration-slot-misalignment","type":"bug","status":"in-progress","lane":"direct","depends_on":[],"external_refs":[],"created":"2026-08-24T23:08:16Z","updated":"2026-08-24T23:16:34Z"},"body":""}}
+{"id":"fdym6kkr","ts":"2026-08-24T23:16:34Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

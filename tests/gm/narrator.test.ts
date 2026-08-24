@@ -17,7 +17,7 @@ import { CRITICAL_EVENTS, narrateEvents, narrationMessages } from '../../src/gm/
 import { GameMaster } from '../../src/gm/index.ts';
 import { completionResponse, errorResponse, startFakeVendor } from '../llm/fake-vendor.ts';
 import { arrangedGame, standingInRoom } from '../engine/helpers.ts';
-import { clientFor, promptTextOf } from './support.ts';
+import { clientFor, narrationReply, promptTextOf } from './support.ts';
 
 /** The events of a turn that the model is actually asked to narrate. */
 function sceneryOf(events: readonly GameEvent[]): GameEvent[] {
@@ -57,7 +57,7 @@ describe('narration', () => {
 
     const vendor = startFakeVendor(() =>
       completionResponse({
-        content: JSON.stringify(scenery.map((_event, index) => `Line ${index} in a velvet voice.`)),
+        content: narrationReply(...scenery.map((_event, index) => `Line ${index} in a velvet voice.`)),
         usage: { prompt_tokens: 80, completion_tokens: 60, total_tokens: 140 },
       }),
     );
@@ -170,7 +170,7 @@ describe('narration', () => {
     expect(scenery.length).toBeGreaterThan(1);
 
     const vendor = startFakeVendor(() =>
-      completionResponse({ content: JSON.stringify(['A hush falls.', '', 17]) }),
+      completionResponse({ content: narrationReply('A hush falls.', '', 17) }),
     );
     try {
       const lines = await narrateEvents(clientFor(vendor.baseUrl), {
@@ -231,7 +231,7 @@ describe('the narrator filters for its viewer', () => {
     expect(visibleEvents(state, 'p2')).toContain(shown);
 
     const vendor = startFakeVendor(() =>
-      completionResponse({ content: JSON.stringify(['A card changes hands in silence.']) }),
+      completionResponse({ content: narrationReply('A card changes hands in silence.') }),
     );
     try {
       // A turn with scenery in it, so a request really is made and the prompt
@@ -342,6 +342,101 @@ describe('the narrator filters for its viewer', () => {
  * nothing else to call people or places. Seating is public — it is already on
  * the player's own screen — so telling the model who is who leaks nothing.
  */
+/**
+ * Item nrntyese, found by driving a live game rather than by the suite.
+ *
+ * The reply used to be a bare array of strings, and an event's line was
+ * whichever entry happened to sit at its index. Models do not honour that: in
+ * the seed-42 live game one entry described a LATER event and the entry for
+ * that later event came back unusable, so the screen carried the same fact
+ * twice — once in the model's words, in the wrong place, and once as the
+ * engine's fallback in the right one.
+ *
+ * The reply now labels each line with the number it answers, so an entry lands
+ * on the event it names or on nothing at all.
+ */
+describe('narration lines are matched by label, not by position', () => {
+  test('a line labelled for a later event lands on that event, and no other', async () => {
+    const events = sceneryOf(turnEvents());
+    expect(events.length).toBeGreaterThan(2);
+
+    // The model answers line 3 first and never answers line 1: exactly the
+    // shape that used to print event 3 twice.
+    const vendor = startFakeVendor(() =>
+      completionResponse({
+        content: JSON.stringify([{ n: 3, text: 'The candlestick was discovered in the Dining Room.' }]),
+      }),
+    );
+    try {
+      const lines = await narrateEvents(clientFor(vendor.baseUrl), {
+        scenario: CANNED_SCENARIO,
+        viewer: 'p1',
+        events,
+      });
+      console.log('[labelled reply] ->', lines.map((line) => [line.source, line.text]));
+
+      expect(lines).toHaveLength(events.length);
+      // The labelled line went where it said it was going.
+      expect(lines[2]!.source).toBe('llm');
+      expect(lines[2]!.text).toBe('The candlestick was discovered in the Dining Room.');
+      // And every unanswered event fell back to the engine — once each.
+      for (const index of [0, 1]) {
+        expect(lines[index]!.source).toBe('fallback');
+        expect(lines[index]!.text).toBe(describeEvent(events[index]!));
+      }
+      // The fact the model told is not ALSO told by the engine anywhere.
+      const engineCopy = lines.filter((line) => line.text === describeEvent(events[2]!));
+      expect(engineCopy).toHaveLength(0);
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('labels outside the batch, repeated, or malformed are ignored', async () => {
+    const events = sceneryOf(turnEvents());
+    const vendor = startFakeVendor(() =>
+      completionResponse({
+        content: JSON.stringify([
+          { n: 1, text: 'A hush fell over the hall.' },
+          { n: 1, text: 'A second answer for the same line.' },
+          { n: 99, text: 'A line for an event that is not in this batch.' },
+          { n: 0, text: 'Numbering starts at one.' },
+          { text: 'No label at all.' },
+          'a bare string',
+        ]),
+      }),
+    );
+    try {
+      const lines = await narrateEvents(clientFor(vendor.baseUrl), {
+        scenario: CANNED_SCENARIO,
+        viewer: 'p1',
+        events,
+      });
+      console.log('[hostile labels] ->', lines.map((line) => [line.source, line.text]));
+
+      expect(lines[0]!.source).toBe('llm');
+      // First answer wins; a second answer for the same line cannot overwrite it.
+      expect(lines[0]!.text).toBe('A hush fell over the hall.');
+      for (let index = 1; index < lines.length; index += 1) {
+        expect(lines[index]!.source).toBe('fallback');
+        expect(lines[index]!.text).toBe(describeEvent(events[index]!));
+      }
+    } finally {
+      await vendor.stop();
+    }
+  });
+
+  test('the prompt asks for the label, and numbers the events it asks about', () => {
+    const events = sceneryOf(turnEvents());
+    const prompt = narrationMessages(CANNED_SCENARIO, events)
+      .map((message) => message.content)
+      .join('\n');
+    console.log('[labelled prompt] ->', prompt);
+    expect(prompt).toMatch(/"n"/);
+    expect(prompt).toContain('1. ');
+  });
+});
+
 describe('the narration prompt speaks the fiction, not the engine', () => {
   const ROSTER = [
     { id: 'p1' as const, character: 'Miss Scarlett' },
@@ -366,7 +461,7 @@ describe('the narration prompt speaks the fiction, not the engine', () => {
     const state = createGame({ seed: 'roster', playerCount: 3 });
     const view = playerView(rollDice(state), 'p1');
     const vendor = startFakeVendor(() =>
-      completionResponse({ content: JSON.stringify(['The hall was still.']) }),
+      completionResponse({ content: narrationReply('The hall was still.') }),
     );
     try {
       const gm = new GameMaster(clientFor(vendor.baseUrl));

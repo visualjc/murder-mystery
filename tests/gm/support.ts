@@ -52,3 +52,14 @@ export function promptTextOf(request: RecordedRequest): string {
 export function messageOfRole(request: RecordedRequest, role: string): string {
   return messagesOf(request).find((message) => message.role === role)?.content ?? '';
 }
+
+/**
+ * A narration reply in the shape the narrator asks for: each line labelled with
+ * the number of the event it answers (see parseNarration, item nrntyese).
+ * `undefined` leaves that line unanswered, so the engine's own sentence stands.
+ */
+export function narrationReply(...texts: readonly (string | number | undefined)[]): string {
+  return JSON.stringify(
+    texts.flatMap((text, index) => (text === undefined ? [] : [{ n: index + 1, text }])),
+  );
+}

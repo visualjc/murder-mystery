@@ -105,8 +105,9 @@ export function narrationMessages(
         '- Call people by their character name. Never write a seat id (p1, p2) or "Player one".',
         '- Never read out corridor coordinates. A corridor is "the corridor", "the passage", "the hall" — never "sixteen-seven".',
         '- Write in the past tense throughout.',
-        '- One sentence per numbered line, in the same order.',
-        `Reply with a JSON array of ${events.length} strings and nothing else.`,
+        '- One sentence per numbered line.',
+        `Reply with a JSON array of ${events.length} objects and nothing else, each {"n": <the line number you are answering>, "text": "<your sentence>"}.`,
+        '- `n` is the number printed beside the line. Answer every line exactly once.',
       ].join('\n'),
     },
     {
@@ -126,11 +127,24 @@ export function narrationMessages(
 }
 
 /**
- * Read up to `count` narration strings from a model reply.
+ * Read narration lines from a model reply, matching each to the event it says
+ * it answers.
  *
  * Returns one slot per event: a string where the model supplied a usable one,
- * null where it did not. A reply that is not a JSON array yields all nulls, so
+ * null where it did not. Anything that is not a JSON array yields all nulls, so
  * the batch falls back wholesale.
+ *
+ * The label is load bearing. Reading the reply by ARRAY POSITION — the first
+ * shape of this function — trusted the model to keep its own order, and a live
+ * game proved it does not: one entry described a later event while that event's
+ * own entry came back unusable, so the same fact reached the screen twice, once
+ * narrated in the wrong place and once as the engine's fallback in the right
+ * one (item nrntyese). An entry now lands on the event it names or on nothing.
+ *
+ * A label the batch has no event for, a second answer for a line already
+ * answered, and an entry with no usable label are all dropped rather than
+ * guessed at: the cost of dropping one is the engine's own sentence, and the
+ * cost of guessing wrong is a fact told twice.
  */
 export function parseNarration(text: string, count: number): (string | null)[] {
   const slots: (string | null)[] = Array.from({ length: count }, () => null);
@@ -142,8 +156,14 @@ export function parseNarration(text: string, count: number): (string | null)[] {
   }
   if (!Array.isArray(payload)) return slots;
 
-  for (let index = 0; index < count; index += 1) {
-    slots[index] = tidyText(payload[index], MAX_LINE_LENGTH);
+  for (const entry of payload) {
+    if (entry === null || typeof entry !== 'object') continue;
+    const { n, text: line } = entry as { n?: unknown; text?: unknown };
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > count) continue;
+    // First answer wins: a model that answers a line twice does not get to
+    // overwrite what it already said.
+    if (slots[n - 1] !== null) continue;
+    slots[n - 1] = tidyText(line, MAX_LINE_LENGTH);
   }
   return slots;
 }
