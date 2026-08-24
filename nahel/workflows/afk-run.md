@@ -291,7 +291,23 @@ on it (step 3); never work around a claim.
            consensus is impossible: park, because a same-vendor self-check is
            not cross-vendor review.
 
-             nahel dispatch review --item <plan-id> -- "Verify docs/prds/<slug>.md at revision <hash>, independently. Read the constitution, the backlog (nahel status), and the assumption events <assumption-event-ids> cited by proposal event <proposal-event-id>. Judge whether the PRD conflicts with the constitution, whether it fits the backlog, and whether each assumption is safe to build on. Then journal your verdict yourself, under your own actor: nahel log note --item <plan-id> --data summary='PRD verification: <agree|disagree> — <the constitution check you performed and what it found>' --data revision=<hash> --data verifies=<proposal-event-id> --data verdict=<agree|disagree>"
+           Write the verification brief to a file first (the run-dir handoff
+           pattern of step 8 — never an inline mega-prompt), then dispatch a
+           pointer to it:
+
+             nahel dispatch review --item <plan-id> --task-file <verification-brief-path>
+
+           The brief says: "Verify docs/prds/<slug>.md at revision <hash>,
+           independently. Read the constitution, the backlog (nahel status),
+           and the assumption events <assumption-event-ids> cited by proposal
+           event <proposal-event-id>. Judge whether the PRD conflicts with
+           the constitution, whether it fits the backlog, and whether each
+           assumption is safe to build on. Then journal your verdict
+           yourself, under your own actor: nahel log note --item <plan-id>
+           --data summary='PRD verification: <agree|disagree> — <the
+           constitution check you performed and what it found>'
+           --data revision=<hash> --data verifies=<proposal-event-id>
+           --data verdict=<agree|disagree>"
 
            The worker journals its own event under its own `NAHEL_ACTOR`,
            which is what makes the two attributions independent.
@@ -352,9 +368,20 @@ on it (step 3); never work around a claim.
    complete: park the dependent item (step 12) naming that dependency, and
    move on to what is dispatchable.
 
-8. Dispatch the worker. Run the checkpoint check (step 3) first, then:
+8. Dispatch the worker. Run the checkpoint check (step 3) first. Then write
+   the brief — the task, stated so a fresh agent can execute it — to a file,
+   and dispatch a pointer to it:
 
-       nahel dispatch implementation --item <item-id> -- <the task, stated so a fresh agent can execute it>
+       nahel dispatch implementation --item <item-id> --task-file <brief-path>
+
+   Task context travels through the run-dir handoff document: dispatch copies
+   the brief to `nahel/runs/<run-id>/task.md` (the committed record — the
+   source file is yours to discard), spawns the worker with a bounded pointer
+   prompt, and journals the document's path, never its content. NEVER inline
+   a multi-sentence brief after `--` — an oversized argv hangs vendor CLIs
+   (the trailing-argv form exists for one-line tasks only). A brief that
+   builds on earlier work references it by path — a prior run's
+   `nahel/runs/<run-id>/result.md`, an item, a PRD — instead of restating it.
 
    - EVERY worker is spawned this way. Never invoke an agent CLI yourself:
      dispatch resolves the routing map, composes the invocation with the

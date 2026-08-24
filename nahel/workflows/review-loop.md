@@ -64,7 +64,10 @@ merge around a claim.
      - **anything else** — DISPATCH it, so the verdict lands under the
        vendor the slot actually names:
 
-           nahel dispatch review --slot 2 --item <item-id> -- <the slot-2 review task, exactly as in step 3a>
+           nahel dispatch review --slot 2 --item <item-id> --task-file <round-brief-path>
+
+       (the same brief file step 3a authored — one document, two independent
+       readers)
 
        The dispatched worker journals its own findings and verdict under its
        own actor, which is what makes slot 2 independent of you.
@@ -110,7 +113,30 @@ merge around a claim.
       worker runs under its own `NAHEL_ACTOR`, so its findings are attributed
       to its vendor rather than to yours.
 
-          nahel dispatch review --item <item-id> -- "Review the PR for <item-id> at HEAD <sha>, independently and adversarially. Read the diff (git diff <base>..<sha>), the item and its backlog context (nahel status), the constitution the brief renders, and the tests the change touches. Journal EACH finding yourself, under your own actor: nahel log note --item <item-id> --data summary='review finding: <path>:<line> — <what is wrong and why it matters>' --data head=<sha> --data round=<n> --data severity=<blocker|major|minor|nit>. Then journal exactly one verdict: nahel log note --item <item-id> --data summary='review verdict: <approve|request-changes> — <the reasoning in one line>' --data head=<sha> --data round=<n> --data verdict=<approve|request-changes>"
+      Write the round's review brief to a file, then dispatch a pointer to
+      it — task context travels through the run-dir handoff document
+      (dispatch copies the brief to `nahel/runs/<run-id>/task.md`, spawns a
+      bounded pointer prompt, and journals the path, never the content);
+      NEVER inline the brief after `--`, an oversized argv hangs vendor CLIs:
+
+          nahel dispatch review --item <item-id> --task-file <round-brief-path>
+
+      The brief says: "Review the PR for <item-id> at HEAD <sha>,
+      independently and adversarially. Read the diff (git diff <base>..<sha>),
+      the item and its backlog context (nahel status), the constitution the
+      brief renders, and the tests the change touches. Journal EACH finding
+      yourself, under your own actor: nahel log note --item <item-id> --data
+      summary='review finding: <path>:<line> — <what is wrong and why it
+      matters>' --data head=<sha> --data round=<n> --data
+      severity=<blocker|major|minor|nit>. Then journal exactly one verdict:
+      nahel log note --item <item-id> --data summary='review verdict:
+      <approve|request-changes> — <the reasoning in one line>' --data
+      head=<sha> --data round=<n> --data verdict=<approve|request-changes>"
+
+      From round 2 on, the brief references the previous round by path — the
+      prior review run's `nahel/runs/<run-id>/result.md` and the fix commits —
+      never by restating findings: fresh task document per round,
+      reference-don't-duplicate.
 
       A findings list you write on a reviewer's behalf is your own review
       wearing its name — the loop counts it as one reviewer, not two.
