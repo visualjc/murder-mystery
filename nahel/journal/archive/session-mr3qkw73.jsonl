@@ -1,0 +1,2 @@
+{"id":"04yfm9bq","ts":"2026-08-25T00:42:26Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"claude-code"},"item":"fher0yzd","payload":{"target":"item","record":{"id":"fher0yzd","name":"ask-limit-not-enforced","type":"bug","status":"backlog","lane":"direct","depends_on":[],"external_refs":[],"created":"2026-08-25T00:42:26Z","updated":"2026-08-25T00:42:26Z"},"body":""}}
+{"id":"4rg7ch46","ts":"2026-08-25T00:42:26Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

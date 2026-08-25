@@ -1,0 +1,13 @@
+{
+  "id": "s3tg8jj8",
+  "item": "6yxb3z7p",
+  "actor": {
+    "kind": "agent",
+    "id": "agy"
+  },
+  "lane": "full",
+  "phase": "failure",
+  "status": "ended",
+  "started": "2026-08-23T04:48:18Z",
+  "ended": "2026-08-23T04:48:31Z"
+}

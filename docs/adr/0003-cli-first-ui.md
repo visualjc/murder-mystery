@@ -43,3 +43,19 @@ No GUI, no web frontend, no TUI framework in v1.
   and loses nothing the rules depend on.
 - If a GUI is ever wanted, the engine/CLI split means only the CLI layer is
   replaced. That is a v2 conversation and a non-goal today.
+
+## Amendment — 2026-08-23: superseded on movement
+
+Superseded on movement by orchestrator resolution `5rwbt08h` (journal event):
+the board is a **dice-and-corridor board per the standard rule set**, not a
+named graph.
+
+The "rooms and adjacency are modelled as a named graph rather than a grid"
+consequence above no longer holds. `src/engine/board.ts` builds nine room boxes
+and seven corridor segments into 77 unit squares with 17 doors and two secret
+passages; movement spends a rolled die across those squares, corridor squares
+hold one token and block passage, and entering a room ends the move.
+
+Everything else in this ADR stands — the surface is still a terminal CLI, the
+engine still decides every outcome, and board geometry is still conveyed in
+text. Only the claim about how geometry is *modelled* is withdrawn.

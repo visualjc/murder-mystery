@@ -1,0 +1,2 @@
+{"id":"tkv940qc","ts":"2026-08-23T05:49:15Z","seq":0,"type":"note","actor":{"kind":"agent","id":"codex"},"item":"hcsshz65","payload":{"summary":"epic review finding: src/gm/index.ts — formatUsageLedger exposes retry exchanges but still labels SessionUsage.failures, which counts failed chat calls, as failed attempts; one failed call over two exchanges prints one failed attempt, leaving the units misleading","severity":"minor"}}
+{"id":"7gx8sv3z","ts":"2026-08-23T05:49:15Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"codex"},"payload":{}}

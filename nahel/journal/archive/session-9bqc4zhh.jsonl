@@ -1,0 +1,2 @@
+{"id":"mb63554y","ts":"2026-08-24T22:56:56Z","seq":0,"type":"item.created","actor":{"kind":"agent","id":"claude-code"},"item":"h4d88mt9","payload":{"target":"item","record":{"id":"h4d88mt9","name":"quit-refused-at-refutation","type":"bug","status":"backlog","lane":"direct","depends_on":[],"external_refs":[],"created":"2026-08-24T22:56:56Z","updated":"2026-08-24T22:56:56Z"},"body":""}}
+{"id":"47b8vvc8","ts":"2026-08-24T22:56:56Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

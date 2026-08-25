@@ -1,0 +1,2 @@
+{"id":"vq8p1vrf","ts":"2026-08-23T03:09:55Z","seq":0,"type":"item.updated","actor":{"kind":"agent","id":"claude-code"},"item":"br5phvfw","payload":{"target":"item","record":{"id":"br5phvfw","name":"llm-client","type":"feature","status":"in-review","lane":"full","parent":"hcsshz65","depends_on":[],"external_refs":[],"created":"2026-08-22T23:02:20Z","updated":"2026-08-23T03:09:55Z"},"body":""}}
+{"id":"yzn8079k","ts":"2026-08-23T03:09:55Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"claude-code"},"payload":{}}

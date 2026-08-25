@@ -1,0 +1,2 @@
+{"id":"2psbt3n9","ts":"2026-08-24T23:33:55Z","seq":0,"type":"note","actor":{"kind":"human","id":"maintainer"},"payload":{"ticket":"jc5x1hs7","summary":"ratified: answered live 2026-08-19, source event never cited"}}
+{"id":"7b5p20ga","ts":"2026-08-24T23:33:55Z","seq":1,"type":"session.closed","actor":{"kind":"human","id":"maintainer"},"payload":{}}

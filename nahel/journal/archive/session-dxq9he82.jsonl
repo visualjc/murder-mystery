@@ -1,0 +1,2 @@
+{"id":"gtxnhj5e","ts":"2026-08-23T05:20:10Z","seq":0,"type":"note","actor":{"kind":"agent","id":"codex"},"item":"hcsshz65","payload":{"summary":"epic review finding: src/ui/io.ts — scenario, narration, and Q&A strings from the remote model reach process.stdout without stripping terminal control bytes; JSON-decoded ANSI/OSC sequences survive whitespace cleanup and can manipulate the player terminal","severity":"major"}}
+{"id":"8sqhks6y","ts":"2026-08-23T05:20:10Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"codex"},"payload":{}}

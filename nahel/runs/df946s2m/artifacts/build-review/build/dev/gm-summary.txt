@@ -1,0 +1,37 @@
+GAME MASTER (item k0n64xb4) — CHANGE SUMMARY
+
+src/gm/ in six modules, on branch epic/murder-mystery-game, 4 commits.
+  notebook.ts  closed-world deduction over a PlayerView, implementing the CORRECTED refutation
+               rule from the engine finding (run e6g6g38j): a named card proven in ANOTHER
+               player's hand is excluded, a card proven to be the REFUTER'S OWN stays a
+               candidate, fixpoint until nothing new. Plus: my own unrefuted suggestion proves
+               every named card I do not hold is in the case file.
+  opponent.ts  deterministic policy — plan from a PlayerView, apply through the REAL engine
+               action. Settles owed refutations, accuses only when the notebook leaves exactly
+               one triple, else walks toward the nearest unvisited candidate room via
+               legalDestinations and suggests the least-tested suspect/weapon still open.
+  scenario.ts  one setup call (json_object) for victim/setting/intro/six personas; parses
+               defensively and degrades FIELD BY FIELD to a canned, card-free scenario. A
+               provider that rejects response_format is retried once without it.
+  narrator.ts  one batched call per turn, prompted with the engine's own describeEvent
+               sentences; any failure or bad entry falls back to that sentence VERBATIM.
+  qa.ts        in-fiction Q&A whose prompt is built from an enumerated whitelist of visible
+               facts — never the case file, never any hand (including the asker's), never the
+               event log, never the weapon board.
+  index.ts     GameMaster over ONE shared ChatClient with per-role model overrides, plus
+               formatUsageLedger() for per-model token totals (resolution 5rwbt08h).
+
+Tests: tests/gm/ (6 files + support.ts), no mocks — the real in-process fake vendor over TCP for
+every LLM path, real engine actions for every game path. Whole repo 265 pass / 0 fail across 15
+files (215 before), `bunx tsc --noEmit` clean.
+
+Load-bearing evidence: all-AI games at 3/4/5/6 seats each end with exactly ONE accusation and it
+is always correct; the Q&A test asserts on the CAPTURED REQUEST BODY, in a game whose visible log
+names all three case-file cards, that no card outside the whitelist reaches the vendor; a live
+smoke against api.poe.com (claude-sonnet-4.5) returned source='llm' in one call, 1391 tokens read
+from the response's own usage object.
+
+Known gaps journaled, not fixed: PlayerView does not expose movedBySuggestion, so AI seats forgo
+the free suggestion when dragged into a room (an engine-view change, out of scope here); and
+SessionUsage.calls counts only COMPLETED responses, so an all-failure session reports zero calls.
+The engine playthrough test now delegates to notebook.ts and its duplicate algorithm was deleted.

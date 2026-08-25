@@ -1,0 +1,2 @@
+{"id":"w6f4r79r","ts":"2026-08-23T05:49:14Z","seq":0,"type":"note","actor":{"kind":"agent","id":"codex"},"item":"hcsshz65","payload":{"summary":"epic review finding: src/gm/narrator.ts — CRITICAL_EVENTS omits suggestion-made, so successful garbage narration can erase or change an opponent suggestion suspect/weapon/room triple while the protected refutation line names only players; deduction is not garbage-safe","severity":"major"}}
+{"id":"pqn2269y","ts":"2026-08-23T05:49:14Z","seq":1,"type":"session.closed","actor":{"kind":"agent","id":"codex"},"payload":{}}

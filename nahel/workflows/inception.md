@@ -347,7 +347,27 @@ the manifest is built outside the repo so it never hashes itself:
       --data artifacts='["PRODUCT.md", "CONTEXT.md", "docs/adr/…", "nahel/config", "nahel/items/…"]' \
       --data assumptions='["<assumption-event-id>", ...]'
 
-    nahel dispatch review --item <plan-id> -- "Verify the hands-off elaboration at manifest revision <manifest-hash>, independently. Read the signed founding paragraph (nahel/config, founding.paragraph), the drafted artifacts the proposal lists, and the assumption events cited by proposal event <proposal-event-id>. Rebuild the manifest yourself from those paths and check the hash before judging anything. Judge whether any elaborated domain fact, hard constraint, or non-goal contradicts the paragraph, whether the recorded governance, routing, contract and decomposition follow from it, and whether each assumption is safe to build on. Journal your verdict yourself, under your own actor: nahel log note --item <plan-id> --data summary='hands-off elaboration verification: <agree|disagree> — <what you checked and what you found>' --data revision=<manifest-hash> --data verifies=<proposal-event-id> --data verdict=<agree|disagree>"
+Write the verification brief to a file, then dispatch a pointer to it — task
+context travels through the run-dir handoff document (dispatch copies the
+brief to `nahel/runs/<run-id>/task.md`, spawns a bounded pointer prompt, and
+journals the path, never the content); never inline a brief this size after
+`--`, an oversized argv hangs vendor CLIs:
+
+    nahel dispatch review --item <plan-id> --task-file <verification-brief-path>
+
+The brief says: "Verify the hands-off elaboration at manifest revision
+<manifest-hash>, independently. Read the signed founding paragraph
+(nahel/config, founding.paragraph), the drafted artifacts the proposal lists,
+and the assumption events cited by proposal event <proposal-event-id>.
+Rebuild the manifest yourself from those paths and check the hash before
+judging anything. Judge whether any elaborated domain fact, hard constraint,
+or non-goal contradicts the paragraph, whether the recorded governance,
+routing, contract and decomposition follow from it, and whether each
+assumption is safe to build on. Journal your verdict yourself, under your own
+actor: nahel log note --item <plan-id> --data summary='hands-off elaboration
+verification: <agree|disagree> — <what you checked and what you found>'
+--data revision=<manifest-hash> --data verifies=<proposal-event-id>
+--data verdict=<agree|disagree>"
 
     nahel log note --item <plan-id> \
       --data summary="hands-off elaboration verified: proposed by <your actor>, verified by <verifier actor>" \

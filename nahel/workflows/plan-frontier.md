@@ -149,7 +149,12 @@ human-only refusals in step 2.
    1. Draft your position — decision, rationale, evidence — and journal it as
       a `ticket=`-keyed note.
    2. Hand the draft to the other agent with the ticket's question and the
-      map's destination, instructed to PROBE AND REFUTE, not to agree. Journal
+      map's destination, instructed to PROBE AND REFUTE, not to agree. The
+      grill spawns its second agent OUTSIDE `nahel dispatch` (no run, no run
+      dir), but the handoff principle still holds: a brief longer than a few
+      sentences travels as a document at a caller-chosen path (e.g. under
+      `docs/handoffs/`), handed over with a one-line pointer prompt — an
+      inline mega-prompt hangs vendor CLIs. Journal
       its counter as its own `ticket=`-keyed note under ITS actor when it runs
       CLI-side, or quoted in yours when it cannot.
    3. Revise or defend; stop at convergence or after a small fixed round cap

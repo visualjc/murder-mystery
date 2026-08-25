@@ -49,3 +49,12 @@ the same header and is what Poe takes.
   nothing today.
 - A provider that diverges from the protocol is simply unsupported in v1, per
   the recorded non-goal.
+
+## Amendment — 2026-08-23: env-file resolution point
+
+Clarification, not a decision change: the gitignored `.env.local` named above
+is resolved against the PACKAGE ROOT (the directory holding `package.json`,
+derived from the module's own path), never against the process working
+directory — launching the game from elsewhere must not silently load another
+directory's credentials (epic-review finding, fixed in commit b924477;
+`POE_ENV_FILE` or the `envFilePath` option override it explicitly).
