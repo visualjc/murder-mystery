@@ -1,0 +1,2 @@
+{"id":"a3tf8qjx","ts":"2026-08-24T23:33:44Z","seq":0,"type":"note","actor":{"kind":"human","id":"maintainer"},"payload":{"ticket":"16h326qp","summary":"ratified: decision-ledger shape, shipped and in use"}}
+{"id":"zhv2fb6d","ts":"2026-08-24T23:33:44Z","seq":1,"type":"session.closed","actor":{"kind":"human","id":"maintainer"},"payload":{}}
